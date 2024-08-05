@@ -3,7 +3,7 @@
 
 This repo is for ***2024-2025 HKUST ECE Final Year Project***
 
-* `Group members`   PENG Yiyan, KUO, Chen-chieh, FU Penglin
+* `Group Members`   PENG Yiyan, KUO Chen-chieh, FU Penglin
 * `Supervisor`      Prof. ZHANG Jun
 * `Project Code`    ZJ01
 
