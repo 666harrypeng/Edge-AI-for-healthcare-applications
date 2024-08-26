@@ -1,2 +1,3 @@
 # Edge-AI-for-healthcare-applications
-2024-2025 HKUST ECE Final Year Project (Supervisor: Prof. ZHANG Jun, Project Code: ZJ01)
+
+This branch `hardware` is regulated by KUO Chen-chieh
