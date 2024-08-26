@@ -1,8 +1,4 @@
 
-# Edge-AI-for-healthcare-applications
+# Edge-AI-for-healthcare-applications (ZJ01b-24)
 
 This branch `model_compression` is regulated by FU Penglin.
-
-* `Group Members`   PENG Yiyan, KUO Chen-chieh, FU Penglin
-* `Supervisor`      Prof. ZHANG Jun
-* `Project ID`      ZJ01b-24
