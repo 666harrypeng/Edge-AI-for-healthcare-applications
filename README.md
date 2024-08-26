@@ -5,11 +5,21 @@ This repo is for ***2024-2025 HKUST ECE Final Year Project***
 
 * `Group Members`   PENG Yiyan, KUO Chen-chieh, FU Penglin
 * `Supervisor`      Prof. ZHANG Jun
-* `Project Code`    ZJ01
+* `Project ID`      ZJ01b-24
 
 ## Repo Overview
 
-There are three branches - `main`, `hardware`, `ai_software`.
+Four branches in total:
+
+* `main` for general purpose publish
+* `hardware` regulated by KUO Chen-chieh
+* `model_design` regulated by PENG Yiyan
+* `model_compression` regulated by FU Penglin
+
+***Note***
+
+1. You should **always** inform the branch assignee **in advance** if you want to edit something in another branch.
+2. A **Pull Request** is needed if you want to push or merge some changes to **main** branch.
 
 ## License
 
