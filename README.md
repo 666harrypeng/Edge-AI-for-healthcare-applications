@@ -29,7 +29,7 @@ There are two folders:
 
 To run the main code:
 
-```python
+```bash
 cd ./pytorch_ypengbb
 python pytorch_anomaly_detection_main.py -c pytorch_NAB_config.json
 ```
