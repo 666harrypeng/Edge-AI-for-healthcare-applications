@@ -8,7 +8,7 @@ from sklearn.metrics import precision_score, recall_score, f1_score
 
 def get_args():
     parser = argparse.ArgumentParser(description="PyTorch VAE-LSTM anomaly detection")
-    parser.add_argument('-c', '--config', required=True, default='./pytorch_NAB_config.json', help='Path to the configuration JSON file')
+    parser.add_argument('-c', '--config', required=True, default='pytorch_NAB_config.json', help='Path to the configuration JSON file')
     return parser.parse_args()
 
 def get_config_from_json(json_file):
@@ -30,7 +30,7 @@ def process_config(json_file):
 
     # Define directory structure for results, summaries, and checkpoints
     save_dir = os.path.join("./experiments", config['exp_name'], config['dataset'])
-    save_name = f"{config['exp_name']}-{config['dataset']}-win{config['l_win']}-seq{config['l_seq']}-codesize{config['code_size']}"
+    save_name = f"{config['exp_name']}-{config['dataset']}-win{config['l_win']}-seq{config['l_seq']}-codesize{config['code_size']}-thre{config['threshold_percent']}-VAEunits{config['num_hidden_units']}-VAElr{config['vae_learning_rate']}-LSTMunits{config['num_hidden_units_lstm']}-LSTMlr{config['lstm_learning_rate']}-bs{config['batch_size']}"
     config['summary_dir'] = os.path.join(save_dir, save_name, "summary/")
     config['result_dir'] = os.path.join(save_dir, save_name, "result/")
     config['checkpoint_dir'] = os.path.join(save_dir, save_name, "checkpoint/")

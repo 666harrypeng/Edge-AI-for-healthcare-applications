@@ -11,6 +11,7 @@ from utils import process_config, create_dirs, save_config, get_args, evaluate_d
 
 
 def main():
+    # Capture the config path from the run arguments
     try:
         args = get_args()
         config = process_config(args.config)
@@ -52,7 +53,7 @@ def main():
         optimizer = optim.Adam(vae_model.parameters(), lr=config['vae_learning_rate'])
         vae_trainer = VAETrainer(vae_model, train_loader, val_loader, optimizer, config, device, readings_mean, readings_std)
         print(f"Loaded VAE model from checkpoint: {vae_checkpoint_path}")
-    
+        
     # Train LSTM
     lstm_checkpoint_path = os.path.join(config['checkpoint_dir_lstm'], 'lstm_best_model.pth')
     lstm_model = LSTMmodel(config).to(device)
@@ -87,11 +88,9 @@ def main():
         threshold = np.percentile(scores, threshold_percentage)
         print(f"finish computing anomaly scores & threshold. ----> threshold percent: {threshold_percentage}; threshold: {threshold}")
         
-        
         full_data_used = data['readings_normalized'][ : len(scores)]
         
         predicted_anomalies_idx = np.array([i for i, score in enumerate(scores) if score > threshold])
-        
         # Evaluate precision, recall, and F1 score
         precision, recall, f1 = evaluate_detection(true_anomalies=full_anomalies_idx,
                                                    predicted_anomalies=predicted_anomalies_idx,

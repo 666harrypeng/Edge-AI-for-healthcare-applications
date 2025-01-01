@@ -91,15 +91,15 @@ def preprocess_and_save(csv_folder_path, dataset, save_dir_path, val_ratio=0.1, 
     train_idx_anomaly = [idx for idx in idx_anomaly if idx < split_idx]
     filtered_training_readings = np.delete(train_readings, train_idx_anomaly, axis=0)
     filtered_training_t = np.delete(train_t, train_idx_anomaly, axis=0)
-    assert len(filtered_training_readings) == len(filtered_training_t) 
+    assert len(filtered_training_readings) == len(filtered_training_t)  
     # split into training and validation sets
     val_idx = int(len(filtered_training_readings) * (1-val_ratio))
     val_readings = filtered_training_readings[val_idx:]
     val_t = filtered_training_t[val_idx:]
     train_readings = filtered_training_readings[:val_idx]
     train_t = filtered_training_t[:val_idx]
-    assert len(train_readings) == len(train_t) 
-    assert len(val_readings) == len(val_t) 
+    assert len(train_readings) == len(train_t)  
+    assert len(val_readings) == len(val_t)  
     
     
     # create rolling windows for train, val, and test sets
@@ -110,7 +110,7 @@ def preprocess_and_save(csv_folder_path, dataset, save_dir_path, val_ratio=0.1, 
     # create rolling windows for full data  (for final anomaly detection visualization)
     full_rolling = create_rolling_windows(readings_normalized, window_size)
     window_num = len(readings_normalized) // window_size
-    full_rolling_anomaly_idx = [idx for idx in idx_anomaly if idx <= (window_num * window_size)]   
+    full_rolling_anomaly_idx = [idx for idx in idx_anomaly if idx <= (window_num * window_size)]    
     
     # save the preprocessed dataset
     os.makedirs(save_dir_path, exist_ok=True)

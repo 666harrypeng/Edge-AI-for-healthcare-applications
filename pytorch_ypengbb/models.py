@@ -6,9 +6,9 @@ class VAEmodel(nn.Module):
     def __init__(self, config):
         super(VAEmodel, self).__init__()
         self.config = config
-        self.l_win = config['l_win']    
-        self.n_channel = config['n_channel']    
-        self.code_size = config['code_size']   
+        self.l_win = config['l_win']   
+        self.n_channel = config['n_channel']   
+        self.code_size = config['code_size'] 
         self.num_hidden_units = config['num_hidden_units']
 
         # Encoder
@@ -24,11 +24,11 @@ class VAEmodel(nn.Module):
             nn.Conv2d(self.num_hidden_units // 2, self.num_hidden_units, kernel_size=(3, 1), stride=(1, 1), padding=(1, 0)),
             nn.ReLU()
         )
-
+       
         self.conv_mean = nn.Conv2d(self.num_hidden_units, self.code_size, kernel_size=(3, 1), stride=(1, 1), padding=(1, 0))
         self.conv_logvar = nn.Conv2d(self.num_hidden_units, self.code_size, kernel_size=(3, 1), stride=(1, 1), padding=(1, 0))
 
-        # Decoder
+        # Decoder 
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(self.code_size, self.num_hidden_units // 4, kernel_size=(3, 1), stride=(1, 1), padding=(1, 0)),
             nn.ReLU(),
@@ -70,15 +70,15 @@ class VAEmodel(nn.Module):
 class LSTMmodel(nn.Module):
     def __init__(self, config):
         super(LSTMmodel, self).__init__()
-        self.seq_length = config['l_win']   
+        self.seq_length = config['l_win']  
         self.num_hidden_units_lstm = config['num_hidden_units_lstm']
-        self.input_size = config['code_size']   
-        self.future_steps = config['l_seq']
+        self.input_size = config['code_size'] 
+        self.future_steps = config['l_seq']  
         self.batch_size = config['batch_size']
-        self.num_layers = config['num_layers'] 
+        self.num_layers = config['num_layers']
 
         self.lstm = nn.LSTM(input_size=self.input_size, hidden_size=self.num_hidden_units_lstm, num_layers=self.num_layers, batch_first=True)
-        self.fc = nn.Linear(self.num_hidden_units_lstm, self.input_size)  
+        self.fc = nn.Linear(self.num_hidden_units_lstm, self.input_size)    
 
     def forward(self, x):
         assert x.shape[1:] == (self.seq_length - self.future_steps, self.input_size), "LSTM forward input shape is not correct!"
@@ -91,13 +91,15 @@ class LSTMmodel(nn.Module):
 
         for _ in range(self.future_steps):
             # Pass the last output into the LSTM
-            lstm_out, (h_n, c_n) = self.lstm(decoder_input, (h_n, c_n))
-
+            lstm_out, (h_n, c_n) = self.lstm(decoder_input, (h_n, c_n)) # (h_n, c_n) stands for the previous states
             next_step = self.fc(lstm_out[:, -1, :])  
+
+            # Append the prediction
             predictions.append(next_step.unsqueeze(1))  
+
             decoder_input = next_step.unsqueeze(1)
 
         predictions = torch.cat(predictions, dim=1)  
-
+        
         return predictions
 

@@ -37,13 +37,13 @@ def create_dataloader(config, mode='train'):
         raise ValueError(f"Unknown mode: {mode}")
 
     # Create Dataset and DataLoader
-    data_split = torch.tensor(data_split, dtype=torch.float32).unsqueeze(-1)
+    data_split = torch.tensor(data_split, dtype=torch.float32).unsqueeze(-1) 
     dataset = NABDataset(data_split)
     
     if mode == 'anomaly_detection':
         dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
     else:
-        dataloader = DataLoader(dataset, batch_size=config['batch_size'], shuffle=(mode == 'train'))
+        dataloader = DataLoader(dataset, batch_size=config['batch_size'], shuffle=(mode == 'train'))  
     
     return dataloader
 

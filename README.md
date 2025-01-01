@@ -31,7 +31,7 @@ To run the main code:
 
 ```bash
 cd ./pytorch_ypengbb
-python pytorch_anomaly_detection_main.py -c pytorch_NAB_config.json
+python preprocess_NAB_data.py -c pytorch_NAB_config.json && python pytorch_anomaly_detection_main.py -c pytorch_NAB_config.json
 ```
 
 ## Core Model Definition

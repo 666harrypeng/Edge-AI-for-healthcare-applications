@@ -1,28 +1,28 @@
 {
     "exp_name": "NAB",
-    "dataset": "machine_temp",
+    "dataset": "cpu_utilization",
     "data_dir": "../datasets/NAB-known-anomaly/",
     "csv_folder_path": "../datasets/NAB-known-anomaly/csv-files/",
-    "batch_size": 32,
-    "split_ratio": 0.9,
+    "batch_size": 48,
+    "split_ratio": 0.8,
 
     "TRAIN_VAE": 1,
-    "l_win": 48,
+    "l_win": 64,
     "n_channel": 1,
-    "num_hidden_units": 512,
+    "num_hidden_units": 1024,
     "code_size": 8,
     "num_epochs_vae": 1000,
-    "vae_learning_rate": 0.00005,
+    "vae_learning_rate": 0.000001,
     "visualization_interval": 20,
-    "patience": 30,
+    "patience": 40,
     
     "TRAIN_LSTM": 1,
-    "l_seq": 10,
+    "l_seq": 30,
     "num_layers" : 4, 
-    "num_hidden_units_lstm": 64,
-    "lstm_learning_rate": 0.00005,
+    "num_hidden_units_lstm": 128,
+    "lstm_learning_rate": 0.0001,
     "num_epochs_lstm": 1000,
 
     "Visualize_anomaly": 1,
-    "threshold_percent": 93
+    "threshold_percent": 99
 }

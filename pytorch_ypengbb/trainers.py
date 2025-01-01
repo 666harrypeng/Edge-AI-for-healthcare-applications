@@ -62,16 +62,17 @@ class VAETrainer:
         total_loss = 0
         for batch in self.train_loader:
             batch = batch.to(self.device)
+            batch = batch.unsqueeze(1)  
             self.optimizer.zero_grad()
-            reconstructed, mean, logvar = self.model(batch)
+            reconstructed, mean, logvar = self.model(batch) 
             loss = self._vae_loss(batch, reconstructed, mean, logvar)
             loss.backward()
             self.optimizer.step()
             total_loss += loss.item()
             
         if self.epoch % self.config["visualization_interval"] == 0:
-            batch = batch.squeeze() 
-            reconstructed = reconstructed.squeeze() 
+            batch = batch.squeeze()  
+            reconstructed = reconstructed.squeeze()  
             self.visualize_reconstruction(batch, reconstructed, self.epoch, mode='train')
             
         return total_loss / len(self.train_loader)
@@ -82,7 +83,7 @@ class VAETrainer:
         with torch.no_grad():
             for batch in self.val_loader:
                 batch = batch.to(self.device)
-                batch = batch.unsqueeze(1)  
+                batch = batch.unsqueeze(1) 
                 reconstructed, mean, logvar = self.model(batch) 
                 loss = self._vae_loss(batch, reconstructed, mean, logvar)
                 total_loss += loss.item()
@@ -96,7 +97,7 @@ class VAETrainer:
 
     @staticmethod
     def _vae_loss(original, reconstructed, mean, logvar):
-        reconstruction_loss = F.mse_loss(reconstructed, original, reduction='mean')
+        reconstruction_loss = F.mse_loss(reconstructed, original, reduction='mean') 
         kl_divergence = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
         return reconstruction_loss + kl_divergence
 
@@ -112,13 +113,11 @@ class VAETrainer:
             with torch.no_grad():
                 for batch in data_loader:
                     batch = batch.to(self.device)
-                    batch = batch.unsqueeze(1) 
-                    
+                    batch = batch.unsqueeze(1)  
                     mean, logvar = vae_model.encode(batch)
-                    mean = mean.squeeze() 
+                    mean = mean.squeeze()  
                     mean = mean.permute(0, 2, 1)
                     embeddings.append(mean.cpu())
-            
             return embeddings
 
         train_embeddings = _generate_embeddings(train_loader)
@@ -127,10 +126,16 @@ class VAETrainer:
         return train_embeddings, val_embeddings
 
     def compute_anomaly_scores(self, test_loader, lstm_model):
+        """
+        Compute combined anomaly scores for the test set.
+        :param test_loader: DataLoader for the test set.
+        :param lstm_model: Trained LSTM model for prediction errors.
+        :return: List of combined anomaly scores and their indices.
+        """
         self.model.eval()
         lstm_model.eval()
         anomaly_scores = []
-        window_indices = np.arange(0, self.config['l_win'])    
+        window_indices = np.arange(0, self.config['l_win'])  
         reconstruction_errors = []
         prediction_errors = []
         
@@ -163,8 +168,8 @@ class VAETrainer:
                 assert batch.shape[1:] == (self.config['n_channel'], self.config['l_win'], 1), "Final Visual Embeddings input shape is not correct!"
 
                 mean, logvar = self.model.encode(batch)
-                embed_mean = mean.squeeze(-1)
-                embed_mean = embed_mean.permute(0, 2, 1)
+                embed_mean = mean.squeeze(-1) 
+                embed_mean = embed_mean.permute(0, 2, 1)  
                 embeddings.append(embed_mean.cpu())
                 
             print("\nfinish lstm embeddings\n")    
@@ -178,25 +183,22 @@ class VAETrainer:
                 
                 # predict
                 pred_embeddings = lstm_model(inputs)
-                pred_outputs = torch.cat((inputs, pred_embeddings), dim=1)  
+                pred_outputs = torch.cat((inputs, pred_embeddings), dim=1) 
                 pred_targets = batch   
                 pred_outputs = pred_outputs.permute(0, 2, 1).unsqueeze(-1)
                 pred_targets = pred_targets.permute(0, 2, 1).unsqueeze(-1)
                 
                 decode_outputs_recon = self.model.decode(pred_outputs).squeeze().cpu().detach().numpy()
-                decode_targets_recon = self.model.decode(pred_targets).squeeze().cpu().detach().numpy()
+                decode_targets_recon = self.model.decode(pred_targets).squeeze().cpu().detach().numpy()                
                 decode_outputs_recon = decode_outputs_recon * self.data_std + self.data_mean
                 decode_targets_recon = decode_targets_recon * self.data_std + self.data_mean
-                prediction_error = (decode_targets_recon - decode_outputs_recon) ** 2    # LSTM's prediction error from original data & reconstruction data
-                # input(f'prediction_error shape: {prediction_error.shape}')  # shape: (48, )
+
+                prediction_error = (decode_targets_recon - decode_outputs_recon) ** 2    
 
                 prediction_errors.extend(prediction_error)
 
 
             print("\nfinish prediction\n")
-            
-            # input(f'recon error list len: {len(reconstruction_errors)}')
-            # input(f'pred error list len: {len(prediction_errors)}')
             
             # Combined Score
             assert len(reconstruction_errors) == len(prediction_errors), "Error list lengths do not match!"
@@ -206,13 +208,6 @@ class VAETrainer:
 
 
     def visualize_anomalies(self, full_data, true_anomalies_idx, predicted_anomalies_idx, precision, recall, f1):
-        """
-        Visualize anomalies across the entire dataset.
-        :param full_data: Full dataset (numpy array).
-        :param true_anomalies: List of true anomaly indices.
-        :param predicted_anomalies_idx
-        """
-        
         plt.figure(figsize=(18, 6))
         plt.plot(full_data, label="Full Data", color="blue")
 
@@ -224,7 +219,8 @@ class VAETrainer:
         for i, anomaly in enumerate(predicted_anomalies_idx):
             plt.axvline(x=anomaly, color="green", linestyle=":", label="Predicted Anomalies" if i==0 else "")
 
-        plt.title(f"Anomaly Detection Visualization\nPrecision:{precision:.4f}, Recall:{recall:.4f}, F1:{f1:.4f}")
+        detect_dataset = self.config['dataset']
+        plt.title(f"{detect_dataset} - Anomaly Detection Visualization\nPrecision:{precision:.4f}, Recall:{recall:.4f}, F1:{f1:.4f}")
         plt.xlabel("Timestamps")
         plt.ylabel("Normalized Readings")
         plt.legend()
@@ -234,17 +230,8 @@ class VAETrainer:
     
 
     def visualize_reconstruction(self, raw_data, reconstructed_data, epoch, mode='train'):
-        """
-        Visualize and save VAE reconstruction performance.
-        :param raw_data: Original input data.
-        :param reconstructed_data: Reconstructed data from the VAE.
-        :param epoch: Current training epoch.
-        :param mode: 'train' or 'val' mode.
-        """
         raw_data = raw_data.cpu().numpy()
         reconstructed_data = reconstructed_data.cpu().detach().numpy()
-
-        # input(f"data std: {self.data_std}, data mean: {self.data_mean}")
         # De-normalize the data
         raw_data = raw_data * self.data_std + self.data_mean
         reconstructed_data = reconstructed_data * self.data_std + self.data_mean
@@ -260,12 +247,6 @@ class VAETrainer:
         plt.close()
     
     def save_loss_curve(self, train_losses, val_losses, model_name):
-        """
-        Save the training and validation loss curves.
-        :param train_losses: List of training losses.
-        :param val_losses: List of validation losses.
-        :param model_name: 'vae' or 'lstm'.
-        """
         plt.figure(figsize=(8, 5))
         plt.plot(train_losses, label="Training Loss")
         plt.plot(val_losses, label="Validation Loss")
@@ -348,10 +329,8 @@ class LSTMTrainer:
             total_loss += loss.item()
             
         if self.epoch % self.config['visualization_interval'] == 0:
-            # use Decoder to return the normal features of predictions
             pred_outputs = torch.cat((inputs, outputs), dim=1)  
-            pred_targets = batch    
-
+            pred_targets = batch
             pred_outputs = pred_outputs.permute(0, 2, 1).unsqueeze(-1)
             pred_targets = pred_targets.permute(0, 2, 1).unsqueeze(-1)
             
@@ -375,8 +354,8 @@ class LSTMTrainer:
                 total_loss += loss.item()
                 
             if self.epoch % self.config['visualization_interval'] == 0:
-                pred_outputs = torch.cat((inputs, outputs), dim=1) 
-                pred_targets = batch 
+                pred_outputs = torch.cat((inputs, outputs), dim=1)  
+                pred_targets = batch    
                     
                 pred_outputs = pred_outputs.permute(0, 2, 1).unsqueeze(-1)
                 pred_targets = pred_targets.permute(0, 2, 1).unsqueeze(-1)
@@ -390,7 +369,6 @@ class LSTMTrainer:
     
     
     def visualize_predictions(self, ground_truth, predictions, epoch, mode='train'):
-
         ground_truth = ground_truth.squeeze().cpu().detach().numpy()
         predictions = predictions.squeeze().cpu().detach().numpy()
         
