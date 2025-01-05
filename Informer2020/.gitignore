@@ -1,0 +1,3 @@
+*.pth
+*.npy
+Informer2020/checkpoints/*.pth
