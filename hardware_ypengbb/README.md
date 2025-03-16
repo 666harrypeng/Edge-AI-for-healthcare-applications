@@ -32,6 +32,8 @@ conda activate hw
 pip install pyserial==3.5
 ```
 
+- Other packages can be installed according to actual needs.
+
 ## Data Collection
 
 1. Generally, the PC connected with the Slave board will be the data collector (will execute the `data_receive_csv.py` script).
