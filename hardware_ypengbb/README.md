@@ -13,7 +13,7 @@ The hardware is consisted of two parts:
 
 Each board should have already loaded the corresponding `ino` file using `Arduino IDE`. 
 
-> [!ATTENTION]
+> [!NOTE]
 > You can just open the `ino` file under this current directory. All the required hardware modules/libraries are included under the `hardware_ypengbb/libraries` folder.
 
 ## Preparation
@@ -47,12 +47,13 @@ cd hardware_ypengbb
 python data_receive_csv.py
 ```
 
-> [!ATTENTION]
+> [!NOTE]
 > The Slave board will use `pyserial` to receive and show the data originally displayed on the `Serial Monitor`.
 >
 > From now on, the `Serial Monitor` by `pyserial` will be denoted as `external Serial Monitor`. The `Serial Monitor` in `Arduino IDE` will be denoted as `Arduino Serial Monitor`.
->
-> So, please make sure: PC connected with the Slave board should always close the `Arduino Serial Monitor` before executing the `data_receive_csv.py` script. Note: just close the `Arduino Serial Monitor` window, which should be fine. No need to close the `Arduino IDE`.
+
+> [!WARNING]
+> Please make sure: PC connected with the Slave board should always close the `Arduino Serial Monitor` before executing the `data_receive_csv.py` script. Note: just close the `Arduino Serial Monitor` window, which should be fine. No need to close the `Arduino IDE`.
 
 4. PLEASE take note of the starting time of the data collection (by taking a screenshot of the `external Serial Monitor`). You should be able to then figure out the "line number" of the starting time in the `sensor_data.csv` file.
 5. When you try to stop breathing, please take a screenshot of the `external Serial Monitor` again. When you try to resume breathing, please take another screenshot of the `external Serial Monitor`. You should be able to then figure out the "line numbers" of the stopping time and the resuming time in the `sensor_data.csv` file. (*Note: Try multiple times of step 5 to get enough data.*)
