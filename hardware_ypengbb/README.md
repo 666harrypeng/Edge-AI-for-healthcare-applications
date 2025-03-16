@@ -59,4 +59,5 @@ python data_receive_csv.py
 6. When data collecttion is started, the `sensor_data.csv` file will be saved under the current directory and it will keep recording the data throughout the data collection process.
 7. When data collection is finished, rename the `sensor_data.csv` file based on how you breathe (refer to the existing files' names). And then, move the data file to the `real_records_with_anomalies` folder.
 8. Refer to the `data_visual.ipynb` file to visualize the data.
-9. Move the `csv` data file to the corresponding `datasets` folder under each model's folder for anomaly detection tasks.
+9. PLEASE update the ***recording start line number***, ***anomaly starting line number***, and ***anomaly ending line number*** in the `data_visual.ipynb` file.
+10. Move the `csv` data file to the corresponding `datasets` folder under each model's folder for anomaly detection tasks.

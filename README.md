@@ -1,18 +1,21 @@
 
 # Edge-AI-for-healthcare-applications (ZJ01b-24)
 
-* `Last Updated`: Feb 21, 2025 - 21:30
+* `Last Updated`: Mar 16, 2025 - 22:50
 * `Contributor`: Yiyan PENG (regulating branch ***model_design***)
 
 This branch stores all necessary files for the whole project based on contributions of Yiyan PENG.
 
 Most recent works are all about anomaly detection - Informer-based models for prediction, Pure LSTM models for prediction, and VAE-LSTM hybrid models for anomaly detection (which is the most completed repository).
 
-There is no pth file inside the `Informer` repository because the large memory size of the general model structure. Please contact me if the Informer’s model saved in the `pth` file format is needed.
+> [!NOTE]
+> There is no pth file inside the `Informer` repository because the large memory size of the general model structure. Please contact me if the Informer’s model saved in the `pth` file format is needed.
 
 ## File Structure
 
 ### hardware_ypengbb
+
+***Please refer to the `hardware_ypengbb/README.md` file for more details.***
 
 * `ESPNow_Basic_Master/Slave` -> Finalized Arduino code scripts for ESP Master board and Slave board, which supports all necessary digital and analog signals' collection and wireless transmission.
 * `libraries` contains all necessary libraries/packages for Arduino code compilation and uploading.
