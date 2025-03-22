@@ -8,317 +8,600 @@
 #include "String.h"
 #include "MAX30105.h"
 #include "heartRate.h"
+#include "spo2_algorithm.h"
 
+/* Sensor List
+blood oxygen 	-> MAX30102
+heart rate 		-> MAX30102
+temperature 	-> AHT10
+humidity 		-> AHT10
+pressure 		-> BMP180
+normal audio 	-> KY-038
+*/
+//////////////////////////////////// Global Variables ////////////////////////////////////
 
-Adafruit_AHTX0 aht10;
-sensors_event_t aht10Temp, aht10Hum;
-Adafruit_BMP085 bmp;
-MAX30105 particleSensor;
+// ESP-NOW transmit data definition
+#define BUFFER_SIZE 10 // cannot be too large, esp_now_send() has a limit on the payload size
+typedef struct MasterTX
+{
+	// Arrays to store multiple readings
+	// const int buffer_size = 32;
+	float temp_buffer[BUFFER_SIZE];
+	float hum_buffer[BUFFER_SIZE];
+	float pressure_buffer[BUFFER_SIZE];
+	float blood_oxygen_buffer[BUFFER_SIZE];
+	float heart_rate_buffer[BUFFER_SIZE];
+	int16_t audio_buffer[BUFFER_SIZE];
+	uint8_t samples; // Number of samples in each buffer
 
-//計算心跳用變數
-const byte RATE_SIZE = 4; //多少平均數量
-byte rates[RATE_SIZE]; //心跳陣列
-byte rateSpot = 0;
-long lastBeat = 0; //Time at which the last beat occurred
-float beatsPerMinute;
-int beatAvg;
+	// float temp_buffer[10];
+	// float hum_buffer[10];
+	// float pressure_buffer[10];
+	// float blood_oxygen_buffer[10];
+	// float heart_rate_buffer[10];
+	// int16_t audio_buffer[10];
+	// uint8_t samples; // Number of samples in each buffer
 
-//計算血氧用變數
-double avered = 0;
-double aveir = 0;
-double sumirrms = 0;
-double sumredrms = 0;
-
-double SpO2 = 0;
-double ESpO2 = 60.0;//初始值
-double FSpO2 = 0.7; //filter factor for estimated SpO2
-double frate = 0.95; //low pass filter for IR/red LED value to eliminate AC component
-int i = 0;
-int Num = 30;//取樣30次才計算1次
-#define FINGER_ON 7000    //紅外線最小量（判斷手指有沒有上）
-#define MINIMUM_SPO2 60.0 //血氧最小量
-
-bool deviceConnected = false;
-// ----------------------------------------------------------------
-
-unsigned long currentMillis;
-unsigned long previousMillisDisplay = 0;
-//ESP-NOW data definition
-typedef struct MasterTX {
-  float pressure, temper, hum, blood, heartRate;
+	void initialize_tx_msg_data()
+	{
+		samples = 0;
+		memset(temp_buffer, 0, sizeof(temp_buffer));
+		memset(hum_buffer, 0, sizeof(hum_buffer));
+		memset(pressure_buffer, 0, sizeof(pressure_buffer));
+		memset(blood_oxygen_buffer, 0, sizeof(blood_oxygen_buffer));
+		memset(heart_rate_buffer, 0, sizeof(heart_rate_buffer));
+		memset(audio_buffer, 0, sizeof(audio_buffer));
+	}
 };
 struct MasterTX TXMsg;
 
+// Temperature/Humidity Sensor (AHT10)
+Adafruit_AHTX0 temp_hum_aht10;
+sensors_event_t aht10Temp, aht10Hum;
+
+// Pressure Sensor (BMP180)
+Adafruit_BMP085 pressure_bmp;
+
+// Blood Oxygen Sensor (MAX30102)
+MAX30105 particleSensor;
+/* Followings are the default values, feel free to finetune */
+byte ledBrightness = 60; // suggested=50-120, Options: 0=Off to 255=50mA
+byte sampleAverage = 4;	  // Options: 1, 2, 4, 8, 16, 32 (after exp: 1 or 2)
+byte ledMode = 2;		  // Options: 1 = Red only(heart beat), 2 = Red + IR(blood oxygen)
+int sampleRate = 800;	  // Options: 50, 100, 200, 400, 800, 1000, 1600
+int pulseWidth = 411;	  // Options: 69, 118, 215, 411
+int adcRange = 4096;	  // Options: 2048, 4096, 8192, 16384
+
+/* variables for heart beat */
+const byte RATE_SIZE = 4; // use <RATE_SIZE> samples for averaging
+byte rates[RATE_SIZE];	  // list of heart beat rates records
+byte rateSpot = 0;
+long lastBeat = 0; // Time at which the last beat occurred
+long thisBeat = 0; // Time at which the current beat occurred
+long beat_gap = 0; // Time gap between this beat and last beat
+float beatsPerMinute;
+int beatAvg;
+
+/* variables for blood oxygen */
+int32_t bufferLength=100; //data length
+int32_t spo2; //SPO2 value
+int8_t validSPO2; //indicator to show if the SPO2 calculation is valid
+int32_t heartRate; //heart rate value
+int8_t validHeartRate; //indicator to show if the heart rate calculation is valid
+uint32_t irBuffer[100]; //infrared LED sensor data
+uint32_t redBuffer[100];  //red LED sensor data
+double avered = 0.0;
+double aveir = 0.0;
+double sumirrms = 0.0;
+double sumredrms = 0.0;
+double SpO2 = 0.0;
+double ESpO2 = 0.0;	 // initial value
+double FSpO2 = 0.7;	 // filter factor for estimated SpO2
+double frate = 0.95; // low pass filter for IR/red LED value to eliminate AC component
+int sample_count = 0;
+int total_samples_batch = 10; // sample <total_samples_batch> (default 30) times to calculate blood oxygen 1 time
+#define FINGER_ON 12000		  // IR_LED MIN value -> to determine whether the finger is on the sensor
+#define MINIMUM_SPO2 70.0	  // blood oxygen minimum
+#define A 1.6				  // Quadratic Approximation Constants (for blood oxygen)
+#define B -34.66			  // Quadratic Approximation Constants (for blood oxygen)
+#define C 112.7				  // Quadratic Approximation Constants (for blood oxygen)
+
 // Global copy of slave
 esp_now_peer_info_t slave;
-#define CHANNEL 13  // 0-20
-
+#define CHANNEL 3 // 1-11
 #define PRINTSCANRESULTS 0
 #define DELETEBEFOREPAIR 0
-
-// Status of Port for communication
-String Serial0_RX_String = "";
-bool Serial0_RX_String_Complete = false;
-uint32_t time_got_RX_String = 0;
-
-unsigned long ScanForSlaveTimeStamp;
 bool isPaired;
 
+// Add these variables for signal filtering
+#define FILTER_SAMPLES 5
+byte filterIndex = 0;
+
+// Add these definitions for audio sampling
+#define AUDIO_PIN 34 // GPIO34/ADC1_CH6
+// #define AUDIO_BUFFER_SIZE 32
+#define SAMPLE_INTERVAL_MS 1 // 1ms between samples (approx 1kHz)
+
+// Remove timer-related variables
+unsigned long lastSampleTime = 0; // For tracking sample timing
+
+////////////////////////////////////////////////////////////////////////
 
 // Init ESP Now with fallback
-void InitESPNow() {
-  WiFi.disconnect();
-  if (esp_now_init() == ESP_OK) {
-    Serial.println("ESPNow Init Success");
-  } else {
-    Serial.println("ESPNow Init Failed");
-    ESP.restart();
-  }
+void InitESPNow()
+{
+	WiFi.disconnect();
+	if (esp_now_init() == ESP_OK)
+	{
+		Serial.println("ESPNow Init Success");
+	}
+	else
+	{
+		Serial.println("ESPNow Init Failed");
+		ESP.restart();
+	}
 }
 
 // Scan for slaves in AP mode
-void ScanForSlave() {
-  int16_t scanResults = WiFi.scanNetworks(false, false, false, 300, CHANNEL);  // Scan only on one channel
-  // reset on each scan
-  bool slaveFound = 0;
-  memset(&slave, 0, sizeof(slave));
+void ScanForSlave()
+{
+	int16_t scanResults = WiFi.scanNetworks(false, false, false, 300, CHANNEL); // Scan only on one channel
+	// reset on each scan
+	bool slaveFound = 0;
+	memset(&slave, 0, sizeof(slave));
 
-  Serial.println("");
-  if (scanResults == 0) {
-    Serial.println("No WiFi devices in AP Mode found");
-  } else {
-    Serial.print("Found ");
-    Serial.print(scanResults);
-    Serial.println(" devices ");
-    for (int i = 0; i < scanResults; ++i) {
-      // Print SSID and RSSI for each device found
-      String SSID = WiFi.SSID(i);
-      int32_t RSSI = WiFi.RSSI(i);
-      String BSSIDstr = WiFi.BSSIDstr(i);
+	Serial.println("");
+	if (scanResults == 0)
+	{
+		Serial.println("No WiFi devices in AP Mode found");
+	}
+	else
+	{
+		Serial.print("Found ");
+		Serial.print(scanResults);
+		Serial.println(" devices ");
+		for (int i = 0; i < scanResults; ++i)
+		{
+			// Print SSID and RSSI for each device found
+			String SSID = WiFi.SSID(i);
+			int32_t RSSI = WiFi.RSSI(i);
+			String BSSIDstr = WiFi.BSSIDstr(i);
 
-      if (PRINTSCANRESULTS) {
-        Serial.print(i + 1);
-        Serial.print(": ");
-        Serial.print(SSID);
-        Serial.print(" (");
-        Serial.print(RSSI);
-        Serial.print(")");
-        Serial.println("");
-      }
-      delay(10);
-      // Check if the current device starts with `Slave`
-      if (SSID.indexOf("Slave") == 0) {
-        // SSID of interest
-        Serial.println("Found a Slave.");
-        Serial.print(i + 1);
-        Serial.print(": ");
-        Serial.print(SSID);
-        Serial.print(" [");
-        Serial.print(BSSIDstr);
-        Serial.print("]");
-        Serial.print(" (");
-        Serial.print(RSSI);
-        Serial.print(")");
-        Serial.println("");
-        // Get BSSID => Mac Address of the Slave
-        int mac[6];
-        if (6 == sscanf(BSSIDstr.c_str(), "%x:%x:%x:%x:%x:%x", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5])) {
-          for (int ii = 0; ii < 6; ++ii) {
-            slave.peer_addr[ii] = (uint8_t)mac[ii];
-          }
-        }
+			if (PRINTSCANRESULTS)
+			{
+				Serial.print(i + 1);
+				Serial.print(": ");
+				Serial.print(SSID);
+				Serial.print(" (");
+				Serial.print(RSSI);
+				Serial.print(")");
+				Serial.println("");
+			}
+			delay(10);
+			// Check if the current device starts with `Slave`
+			if (SSID.indexOf("Slave") == 0)
+			{
+				// SSID of interest
+				Serial.println("Found a Slave.");
+				Serial.print(i + 1);
+				Serial.print(": ");
+				Serial.print(SSID);
+				Serial.print(" [");
+				Serial.print(BSSIDstr);
+				Serial.print("]");
+				Serial.print(" (");
+				Serial.print(RSSI);
+				Serial.print(")");
+				Serial.println("");
+				// Get BSSID => Mac Address of the Slave
+				int mac[6];
+				if (6 == sscanf(BSSIDstr.c_str(), "%x:%x:%x:%x:%x:%x", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]))
+				{
+					for (int ii = 0; ii < 6; ++ii)
+					{
+						slave.peer_addr[ii] = (uint8_t)mac[ii];
+					}
+				}
 
-        slave.channel = CHANNEL;  // pick a channel
-        slave.encrypt = 0;        // no encryption
+				slave.channel = CHANNEL; // pick a channel
+				slave.encrypt = 0;		 // no encryption
 
-        slaveFound = 1;
-        // we are planning to have only one slave in this example;
-        // Hence, break after we find one, to be a bit efficient
-        break;
-      }
-    }
-  }
+				slaveFound = 1;
+				// we are planning to have only one slave in this example;
+				// Hence, break after we find one, to be a bit efficient
+				break;
+			}
+		}
+	}
 
-  if (slaveFound) {
-    Serial.println("Slave Found, processing..");
-  } else {
-    Serial.println("Slave Not Found, trying again.");
-  }
+	if (slaveFound)
+	{
+		Serial.println("Slave Found, processing..");
+	}
+	else
+	{
+		Serial.println("Slave Not Found, trying again.");
+	}
 
-  // clean up ram
-  WiFi.scanDelete();
+	// clean up ram
+	WiFi.scanDelete();
 }
 
 // Check if the slave is already paired with the master.
 // If not, pair the slave with master
-bool manageSlave() {
-  if (slave.channel == CHANNEL) {
-    if (DELETEBEFOREPAIR) {
-      deletePeer();
-    }
+bool manageSlave()
+{
+	if (slave.channel == CHANNEL)
+	{
+		if (DELETEBEFOREPAIR)
+		{
+			deletePeer();
+		}
 
-    Serial.print("Slave Status: ");
-    // check if the peer exists
-    bool exists = esp_now_is_peer_exist(slave.peer_addr);
-    if (exists) {
-      // Slave already paired.
-      Serial.println("Already Paired");
-      return true;
-    } else {
-      // Slave not paired, attempt pair
-      esp_err_t addStatus = esp_now_add_peer(&slave);
-      if (addStatus == ESP_OK) {
-        // Pair success
-        Serial.println("Pair success");
-        return true;
-      } else if (addStatus == ESP_ERR_ESPNOW_NOT_INIT) {
-        Serial.println("ESPNOW Not Init");
-        return false;
-      } else if (addStatus == ESP_ERR_ESPNOW_ARG) {
-        Serial.println("Invalid Argument");
-        return false;
-      } else if (addStatus == ESP_ERR_ESPNOW_FULL) {
-        Serial.println("Peer list full");
-        return false;
-      } else if (addStatus == ESP_ERR_ESPNOW_NO_MEM) {
-        Serial.println("Out of memory");
-        return false;
-      } else if (addStatus == ESP_ERR_ESPNOW_EXIST) {
-        Serial.println("Peer Exists");
-        return true;
-      } else {
-        Serial.println("Not sure what happened");
-        return false;
-      }
-    }
-  } else {
-    // No slave found to process
-    Serial.println("No Slave found to process");
-    return false;
-  }
+		Serial.print("Slave Status: ");
+		// check if the peer exists
+		bool exists = esp_now_is_peer_exist(slave.peer_addr);
+		if (exists)
+		{
+			// Slave already paired.
+			Serial.println("Already Paired");
+			return true;
+		}
+		else
+		{
+			// Slave not paired, attempt pair
+			esp_err_t addStatus = esp_now_add_peer(&slave);
+			if (addStatus == ESP_OK)
+			{
+				// Pair success
+				Serial.println("Pair success");
+				return true;
+			}
+			else if (addStatus == ESP_ERR_ESPNOW_NOT_INIT)
+			{
+				Serial.println("ESPNOW Not Init");
+				return false;
+			}
+			else if (addStatus == ESP_ERR_ESPNOW_ARG)
+			{
+				Serial.print("addStatus: ");
+				Serial.println("Invalid Argument");
+				return false;
+			}
+			else if (addStatus == ESP_ERR_ESPNOW_FULL)
+			{
+				Serial.println("Peer list full");
+				return false;
+			}
+			else if (addStatus == ESP_ERR_ESPNOW_NO_MEM)
+			{
+				Serial.println("Out of memory");
+				return false;
+			}
+			else if (addStatus == ESP_ERR_ESPNOW_EXIST)
+			{
+				Serial.println("Peer Exists");
+				return true;
+			}
+			else
+			{
+				Serial.println("Not sure what happened");
+				return false;
+			}
+		}
+	}
+	else
+	{
+		// No slave found to process
+		Serial.println("No Slave found to process");
+		return false;
+	}
 }
 
-void deletePeer() {
-  esp_err_t delStatus = esp_now_del_peer(slave.peer_addr);
-  Serial.print("Slave Delete Status: ");
-  if (delStatus == ESP_OK) {
-    // Delete success
-    Serial.println("Delete Peer Success");
-  } else if (delStatus == ESP_ERR_ESPNOW_NOT_INIT) {
-    // How did we get so far!!
-    Serial.println("ESPNOW Not Init");
-  } else if (delStatus == ESP_ERR_ESPNOW_ARG) {
-    Serial.println("Invalid Argument");
-  } else if (delStatus == ESP_ERR_ESPNOW_NOT_FOUND) {
-    Serial.println("Peer not found.");
-  } else {
-    Serial.println("Not sure what happened");
-  }
+void deletePeer()
+{
+	esp_err_t delStatus = esp_now_del_peer(slave.peer_addr);
+	Serial.print("Slave Delete Status: ");
+	if (delStatus == ESP_OK)
+	{
+		// Delete success
+		Serial.println("Delete Peer Success");
+	}
+	else if (delStatus == ESP_ERR_ESPNOW_NOT_INIT)
+	{
+		// How did we get so far!!
+		Serial.println("ESPNOW Not Init");
+	}
+	else if (delStatus == ESP_ERR_ESPNOW_ARG)
+	{
+		Serial.println("Invalid Argument");
+	}
+	else if (delStatus == ESP_ERR_ESPNOW_NOT_FOUND)
+	{
+		Serial.println("Peer not found.");
+	}
+	else
+	{
+		Serial.println("Not sure what happened");
+	}
 }
 
-
-void sendData() {
-  const uint8_t *peer_addr = slave.peer_addr;
-  esp_err_t result = esp_now_send(peer_addr, (uint8_t *)&TXMsg, sizeof(TXMsg));
+void sendData()
+{
+	const uint8_t *peer_addr = slave.peer_addr;
+	esp_err_t result = esp_now_send(peer_addr, (uint8_t *)&TXMsg, sizeof(TXMsg));
 }
-
 
 // callback when data is sent from Master to Slave
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  char macStr[18];
-  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-           mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-  Serial.print("Packet Sent to: ");
-  Serial.println(macStr);
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
+{
+	char macStr[18];
+	snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+			 mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+	Serial.print("Packet Sent to: ");
+	Serial.println(macStr);
+}
+
+/////////////////////////////////////// setup ///////////////////////////////////////////////////////
+void setup()
+{
+	Serial.begin(115200);
+	delay(10);
+
+	/////////////////////////////////////// Master WIFI Setup ///////////////////////////////////////////////////////
+	// Set device in STA (station) mode to begin with
+	WiFi.mode(WIFI_STA);
+	esp_wifi_set_channel(CHANNEL, WIFI_SECOND_CHAN_NONE);
+	Serial.println("ESPNow/Basic/Master Example");
+	// This is the mac address of the Master in Station Mode
+	Serial.print("STA MAC: ");
+	Serial.println(WiFi.macAddress());
+	Serial.print("STA CHANNEL ");
+	Serial.println(WiFi.channel());
+
+	// Init ESPNow with a fallback logic
+	InitESPNow();
+
+	// Once ESPNow is successfully Init,
+	// We will register for Send CB to get the status of Trasnmitted packet
+	esp_now_register_send_cb(OnDataSent);
+
+	// Initialize TXMsg values
+	TXMsg.initialize_tx_msg_data();
+
+	// scan for slave
+	ScanForSlave();
+
+	/////////////////////////////////////// Check Slave Connection ///////////////////////////////////////////////////////
+	// If Slave is found, it would be populate in `slave` variable. We will check if `slave` is defined and then we proceed further
+	if (slave.channel == CHANNEL)
+	{ // check if slave channel is defined
+		// slave is defined
+		// Add slave as peer if it has not been added already
+		isPaired = manageSlave();
+		Serial.print("Whether Slave has been paired: ");
+		Serial.println(isPaired);
+	}
+
+	/////////////////////////////////////// Check Temp/Hum Sensor (AHT10) ///////////////////////////////////////////////////////
+	if (!temp_hum_aht10.begin())
+	{
+		Serial.println(F("Temp/Hum Sensor (AHT10) could NOT find. Check wiring ------ "));
+		while (1)
+			delay(10);
+	}
+	else
+	{
+		Serial.println(F("Temp/Hum Sensor (AHT10) found"));
+	}
+
+	/////////////////////////////////////// Check Pressure Sensor (BMP180) ///////////////////////////////////////////////////////
+	if (!pressure_bmp.begin())
+	{
+		Serial.println(F("Pressure Sensor (BMP180) could NOT find. Check wiring ------ "));
+		while (1)
+			delay(10);
+	}
+	else
+	{
+		Serial.println(F("Pressure Sensor (BMP180) found"));
+	}
+
+	/////////////////////////////////////// Check Blood Oxygen Sensor (MAX30102) ///////////////////////////////////////////////////////
+	if (!particleSensor.begin(Wire, I2C_SPEED_FAST))
+	{
+		Serial.println("Blood Oxygen Sensor (MAX30102) could NOT find. Check wiring ------ ");
+		while (1)
+			delay(10);
+	}
+	else
+	{
+		Serial.println("Blood Oxygen Sensor (MAX30102) found");
+    particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange); //Configure sensor with these settings
+    // particleSensor.enableDIETEMPRDY();
+
+    // particleSensor.setPulseAmplitudeRed(0x0A); //Turn Red LED to low to indicate sensor is running
+    // particleSensor.setPulseAmplitudeGreen(0); //Turn off Green LED
+		// Configure particle sensor with pre-defined settings (global variables)
+
+  //read the first 100 samples, and determine the signal range
+    for (byte i = 0 ; i < bufferLength ; i++)
+    {
+      while (particleSensor.available() == false) //do we have new data?
+        particleSensor.check(); //Check the sensor for new data
+
+      redBuffer[i] = particleSensor.getRed();
+      irBuffer[i] = particleSensor.getIR();
+      particleSensor.nextSample(); //We're finished with this sample so move to next sample
+
+      Serial.print(F("red="));
+      Serial.print(redBuffer[i], DEC);
+      Serial.print(F(", ir="));
+      Serial.println(irBuffer[i], DEC);
+    }
+
+    //calculate heart rate and SpO2 after first 100 samples (first 4 seconds of samples)
+    maxim_heart_rate_and_oxygen_saturation(irBuffer, bufferLength, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
+
+		Serial.println("Blood Oxygen Sensor (MAX30102) configured");
+	}
+
+	/////////////////////////////////////// Setup ADC for audio (KY-038) ///////////////////////////////////////////////////////
+	analogReadResolution(12);		// Sets the ADC resolution to 12 bits (0–4095).
+	analogSetAttenuation(ADC_11db); // Sets the attenuation to 11dB, which is the maximum attenuation for the ADC, allowing it to measure voltages up to approximately 3.3V.
+}
+
+void init_heart_rate_records()
+{
+	for (int i = 0; i < RATE_SIZE; i++)
+	{
+		rates[i] = 0;
+	}
+
+	rateSpot = 0;
+	lastBeat = 0;
+	thisBeat = 0;
+	beat_gap = 0;
+	beatsPerMinute = 0.0;
+	beatAvg = 0;
 }
 
 
+void get_temp_hum_values()
+{
+	temp_hum_aht10.getEvent(&aht10Hum, &aht10Temp);
+	TXMsg.temp_buffer[TXMsg.samples] = aht10Temp.temperature;
+	TXMsg.hum_buffer[TXMsg.samples] = aht10Hum.relative_humidity;
+	// TXMsg.samples++;
 
-void setup() {
-  Serial.begin(115200);
-  delay(10);
+	// // for debug
+	// Serial.print(F("Temp: "));
+	// Serial.print(TXMsg.temper);
+	// Serial.print(F(" C, Hum: "));
+	// Serial.print(TXMsg.hum);
+	// Serial.println(F(" %"));
+}
 
-  //Set device in STA mode to begin with
-  WiFi.mode(WIFI_STA);
-  esp_wifi_set_channel(CHANNEL, WIFI_SECOND_CHAN_NONE);
-  Serial.println("ESPNow/Basic/Master Example");
+void get_pressure_values()
+{
+	TXMsg.pressure_buffer[TXMsg.samples] = pressure_bmp.readPressure();
+	// TXMsg.samples++;
 
-  // This is the mac address of the Master in Station Mode
-  Serial.print("STA MAC: ");
-  Serial.println(WiFi.macAddress());
-  Serial.print("STA CHANNEL ");
-  Serial.println(WiFi.channel());
+	// // for debug
+	// Serial.print(F("Pressure: "));
+	// Serial.print(TXMsg.pressure);
+	// Serial.println(F(" Pa"));
+}
 
-  // Init ESPNow with a fallback logic
-  InitESPNow();
+void get_heart_rate_values()
+{
+	long irValue = particleSensor.getIR();
+	// Serial.println("irValue: " + String(irValue));
 
-  // Once ESPNow is successfully Init, we will register for Send CB to
-  // get the status of Trasnmitted packet
-  esp_now_register_send_cb(OnDataSent);
+	// // Apply moving average filter
+	// irBuffer[filterIndex] = irValue;
+	// filterIndex = (filterIndex + 1) % FILTER_SAMPLES;
 
-  // scan for slave
-  ScanForSlave();
+	// long filteredIR = 0;
+	// for(int i = 0; i < FILTER_SAMPLES; i++) {
+	// 	filteredIR += irBuffer[i];
+	// }
+	// filteredIR /= FILTER_SAMPLES;
 
-  // If Slave is found, it would be populate in `slave` variable
-  // We will check if `slave` is defined and then we proceed further
-  if (slave.channel == CHANNEL) {  // check if slave channel is defined
-    // slave is defined
-    // Add slave as peer if it has not been added already
-    isPaired = manageSlave();
-    Serial.print("Whether Slave has been paired: ");
-    Serial.println(isPaired);
-  }
-  if (!aht10.begin()) {
-    Serial.println(F("Could not find AHT? Check wiring"));
-    while (1) delay(10);
-  }
-  Serial.println(F("AHT10 or AHT20 found"));
-  if (!bmp.begin()) {
-    Serial.println("Could not find a valid BMP085/BMP180 sensor, check wiring!");
-    while (1) {}
-  }
-  if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) //Use default I2C port, 400kHz speed
+	// Serial.println("Raw IR=" + String(irValue) + ", Filtered IR=" + String(filteredIR));
+
+	// if (filteredIR > FINGER_ON)
+	if (irValue > FINGER_ON)
+	{
+		// Serial.println("Finger on sensor >>> checkForBeat(irValue)=" + String(checkForBeat(filteredIR)));
+		// Serial.println("Finger on sensor >>> checkForBeat(irValue)=" + String(checkForBeat(irValue)));
+
+		// if (checkForBeat(filteredIR) == true) // Returns true if a beat is detected
+		if (checkForBeat(irValue) == true) // Returns true if a beat is detected
+		{
+			beat_gap = millis() - lastBeat;
+			lastBeat = millis();
+			// Serial.println("beat_gap=" + String(beat_gap));
+			beatsPerMinute = 60 / (beat_gap / 1000.0); // get the average heart rate
+			// Serial.println("beatsPerMinute=" + String(beatsPerMinute));
+			if (beatsPerMinute < 255 && beatsPerMinute > 20) // constrain the heart rate to 20-255
+			{
+				// Serial.println("beatsPerMinute=" + String(beatsPerMinute) + " is in the range of 20-255");
+				rates[rateSpot++] = (byte)beatsPerMinute;
+				rateSpot %= RATE_SIZE;
+				beatAvg = 0;
+				for (byte x = 0; x < RATE_SIZE; x++)
+					beatAvg += rates[x];
+				beatAvg /= RATE_SIZE;
+
+				// Serial.println("after update beatAvg(heart rate) = " + String(beatAvg));
+			}
+		}
+
+		TXMsg.heart_rate_buffer[TXMsg.samples] = beatAvg;
+		// TXMsg.samples++;
+
+		// // for debug
+		// Serial.print(F("Current HeartRate: "));
+		// Serial.println(TXMsg.heart_rate);
+	}
+	else // no finger on the sensor
+	{
+		init_heart_rate_records();
+		// TXMsg.heart_rate = 0.0f;
+
+		// Serial.println("no finger on the sensor");
+	}
+}
+
+void get_blood_oxygen_values()
+{
+  //dumping the first 25 sets of samples in the memory and shift the last 75 sets of samples to the top
+  for (byte i = 25; i < bufferLength; i++)
   {
-    Serial.println("找不到MAX30102");
-    while (1);
+    redBuffer[i - 25] = redBuffer[i];
+    irBuffer[i - 25] = irBuffer[i];
   }
-  //以下選項可自行調整
-  byte ledBrightness = 60; //亮度建議=127, Options: 0=Off to 255=50mA
-  byte sampleAverage = 4; //Options: 1, 2, 4, 8, 16, 32
-  byte ledMode = 2; //Options: 1 = Red only(心跳), 2 = Red + IR(血氧)
-  int sampleRate = 800; //Options: 50, 100, 200, 400, 800, 1000, 1600, 3200
-  int pulseWidth = 215; //Options: 69, 118, 215, 411
-  int adcRange = 16384; //Options: 2048, 4096, 8192, 16384
-  // Set up the wanted parameters
-  particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange); //Configure sensor with these settings
-  particleSensor.enableDIETEMPRDY();
+  
+  //take 25 sets of samples before calculating the heart rate.
+  for (byte i = 75; i < bufferLength; i++)
+  {
+    while (particleSensor.available() == false) //do we have new data?
+      particleSensor.check(); //Check the sensor for new data
 
-  particleSensor.setPulseAmplitudeRed(0x0A); //Turn Red LED to low to indicate sensor is running
-  particleSensor.setPulseAmplitudeGreen(0); //Turn off Green LED
+    redBuffer[i] = particleSensor.getRed();
+    irBuffer[i] = particleSensor.getIR();
+    particleSensor.nextSample(); //We're finished with this sample so move to next sample
+
+    //for debug
+    // Serial.print(F("red="));
+    // Serial.print(redBuffer[i], DEC);
+    // Serial.print(F(", ir="));
+    // Serial.print(irBuffer[i], DEC);
+
+    // Serial.print(F(", HR="));
+    // Serial.print(heartRate, DEC);
+
+    // Serial.print(F(", HRvalid="));
+    // Serial.print(validHeartRate, DEC);
+
+    // Serial.print(F(", SPO2="));
+    // Serial.print(spo2, DEC);
+
+    // Serial.print(F(", SPO2Valid="));
+    // Serial.println(validSPO2, DEC);
+  }
+
+  //After gathering 25 new samples recalculate HR and SP02
+  maxim_heart_rate_and_oxygen_saturation(irBuffer, bufferLength, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
+  TXMsg.blood_oxygen_buffer[TXMsg.samples] = spo2;
 }
 
-
-
-void loop() {
-  currentMillis = millis();
-  if (currentMillis - previousMillisDisplay > 100) {
-    getAht10Values();
-    TXMsg.pressure = bmp.readPressure();
-    // printValues();
-    previousMillisDisplay = currentMillis;
-  }
-  // TXMsg.audio = 500.0 + random(100,200);
-  // TXMsg.temper = 19 + random(1,3);
-  // TXMsg.hum = 63+ random(3,6);
-  // TXMsg.blood = 98+random(1,2);
-  TXMsg.blood = ESpO2;
-  TXMsg.heartRate = beatAvg;
+void get_heartrate_and_bloodoxygen_values()
+{
   long irValue = particleSensor.getIR();    //Reading the IR value it will permit us to know if there's a finger on the sensor or not
-  //是否有放手指
-  if (irValue > FINGER_ON ) {
-    //檢查是否有心跳，測量心跳
+	if (irValue > FINGER_ON ) {
     if (checkForBeat(irValue) == true) {
-      //Serial.print("Bpm="); Serial.println(beatAvg);//將心跳顯示到序列
       long delta = millis() - lastBeat;//計算心跳差
       lastBeat = millis();
       beatsPerMinute = 60 / (delta / 1000.0);//計算平均心跳
@@ -333,14 +616,14 @@ void loop() {
     }
 
     //測量血氧
-    uint32_t ir, red;
+    uint32_t ir, red ;
     double fred, fir;
     particleSensor.check(); //Check the sensor, read up to 3 samples
     if (particleSensor.available()) {
-      i++;
+      sample_count++;
       ir = particleSensor.getFIFOIR(); //讀取紅外線
       red = particleSensor.getFIFORed(); //讀取紅光
-      //Serial.println("red=" + String(red) + ",IR=" + String(ir) + ",i=" + String(i));
+      Serial.println("red=" + String(red) + ",IR=" + String(ir) + ",i=" + String(sample_count));
       fir = (double)ir;//轉double
       fred = (double)red;//轉double
       aveir = aveir * frate + (double)ir * (1.0 - frate); //average IR level by low pass filter
@@ -348,7 +631,7 @@ void loop() {
       sumirrms += (fir - aveir) * (fir - aveir);//square sum of alternate component of IR level
       sumredrms += (fred - avered) * (fred - avered); //square sum of alternate component of red level
 
-      if ((i % Num) == 0) {
+      if ((sample_count % total_samples_batch) == 0) {
         double R = (sqrt(sumirrms) / aveir) / (sqrt(sumredrms) / avered);
         SpO2 = -23.3 * (R - 0.4) + 120;
         ESpO2 = FSpO2 * ESpO2 + (1.0 - FSpO2) * SpO2;//low pass filter
@@ -356,19 +639,17 @@ void loop() {
         if (ESpO2 > 100) ESpO2 = 99.9;
         //Serial.print(",SPO2="); Serial.println(ESpO2);
         sumredrms = 0.0; sumirrms = 0.0; SpO2 = 0;
-        i = 0;
+        sample_count = 0;
       }
       particleSensor.nextSample(); //We're finished with this sample so move to next sample
     }
-    
-    // //將數據顯示到序列
-    // Serial.print("Bpm:" + String(beatAvg));
-    // //顯示血氧數值，避免誤測，規定心跳超過30才能顯示血氧
-    // if (beatAvg > 30)  Serial.println(",SPO2:" + String(ESpO2));
-    // else Serial.println(",SPO2:" + String(ESpO2));
-  }
-  //沒偵測到手指，清除所有數據及螢幕內容顯示"Finger Please"
-  else {
+    TXMsg.heart_rate_buffer[TXMsg.samples] = beatAvg;
+    TXMsg.blood_oxygen_buffer[TXMsg.samples] = ESpO2;
+    //將數據顯示到序列
+    Serial.print("Bpm:" + String(beatAvg));
+    //顯示血氧數值，避免誤測，規定心跳超過30才能顯示血氧
+    Serial.println(",SPO2:" + String(ESpO2));
+  }else {
     //清除心跳數據
     for (byte rx = 0 ; rx < RATE_SIZE ; rx++) rates[rx] = 0;
     beatAvg = 0; rateSpot = 0; lastBeat = 0;
@@ -376,48 +657,57 @@ void loop() {
     avered = 0; aveir = 0; sumirrms = 0; sumredrms = 0;
     SpO2 = 0; ESpO2 = 90.0;
   }
-  sendData();
-  // delay(100);
 }
 
-void getAht10Values() {
-  aht10.getEvent(&aht10Hum, &aht10Temp);  // populate temp and humidity objects with fresh data
-  TXMsg.temper = aht10Temp.temperature;
-  TXMsg.hum = aht10Hum.relative_humidity;
-  /*
-  Serial.println(F("AHT10 Values"));
-  Serial.print(F("Temperature: "));
-  Serial.print(temperature);
-  Serial.println(F(" *C"));
-
-  Serial.print(F("Humidity: "));
-  Serial.print(humidity);
-  Serial.println(F(" %"));
-  Serial.println();
-  */
+void get_audio_samples()
+{
+	// int16_t audio_sample = analogRead(AUDIO_PIN) - 2048;
+	int16_t audio_sample = analogRead(AUDIO_PIN);
+	TXMsg.audio_buffer[TXMsg.samples] = audio_sample;
+	// TXMsg.samples++;
 }
-// void printValues() {
-//   Serial.print("Temperature = ");
-//   Serial.print(temperature);
-//   Serial.println(" *C");
-//   static char temperatureCTemp[6];
-//   dtostrf(temperature, 6, 2, temperatureCTemp);
-//   //Set temperature Characteristic value and notify connected client
-//   bmeTemperatureCelsiusCharacteristics.setValue(temperatureCTemp);
-//   bmeTemperatureCelsiusCharacteristics.notify();
 
-//   // Convert temperature to Fahrenheit
-//   /*Serial.print("Temperature = ");
-//   Serial.print(1.8 * bme.readTemperature() + 32);
-//   Serial.println(" *F");*/
+void loop()
+{
+	unsigned long currentTime = millis();
+	// Collect samples at regular intervals
+	if (currentTime - lastSampleTime >= SAMPLE_INTERVAL_MS)
+	{
+		if (TXMsg.samples < BUFFER_SIZE)
+		{	
+			Serial.println("Collecting samples");
+			// Get all sensor readings
+			get_temp_hum_values();
+			// Serial.println("get_temp_hum_values");
+			// get_pressure_values();
+			// Serial.println("get_pressure_values");
+			get_blood_oxygen_values();
+			// Serial.println("get_heartrate_and_bloodoxygen_values");
+			// Get and store audio sample
+			get_audio_samples();
+			// Serial.println("get_audio_samples");
+			TXMsg.samples++;
+			lastSampleTime = currentTime;
+		}
 
-//   Serial.print("Humidity = ");
-//   Serial.print(humidity);
-//   Serial.println(" %");
-//   static char humidityTemp[6];
-//   dtostrf(humidity, 6, 2, humidityTemp);
-//   //Set humidity Characteristic value and notify connected client
-//   bmeHumidityCharacteristics.setValue(humidityTemp);
-//   bmeHumidityCharacteristics.notify();
-//   Serial.println();
-// }
+		// Send when buffer is full
+		if (TXMsg.samples >= BUFFER_SIZE)
+		{
+			Serial.println("---------------- Sending data ----------------");
+			sendData();
+			// Serial.println("sendData finished");
+			// Debug print
+			Serial.print("T[0]: " + String(TXMsg.temp_buffer[0]));
+			Serial.print(", H[0]: " + String(TXMsg.hum_buffer[0]));
+			Serial.print(", P[0]: " + String(TXMsg.pressure_buffer[0]));
+			Serial.print(", B[0]: " + String(TXMsg.blood_oxygen_buffer[0]));
+			Serial.print(", HR[0]: " + String(TXMsg.heart_rate_buffer[0]));
+			Serial.print(", Audio[0]: " + String(TXMsg.audio_buffer[0]));
+			Serial.println();
+
+			// Reset audio buffer
+			TXMsg.samples = 0;
+			// Serial.println("TXMsg.samples = 0");
+		}
+	}
+}
