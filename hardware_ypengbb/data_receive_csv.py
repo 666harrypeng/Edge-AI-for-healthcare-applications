@@ -4,7 +4,7 @@ import time
 import re
 
 # Configuration
-SERIAL_PORT = '/dev/cu.usbserial-0001'  # Yiyan Macbook's port # Replace with actual serial port
+SERIAL_PORT = '/dev/cu.usbserial-0001'  # Yiyan Macbook's second port # Replace with actual serial port
 BAUD_RATE = 115200
 OUTPUT_FILE = './sensor_data.csv'
 

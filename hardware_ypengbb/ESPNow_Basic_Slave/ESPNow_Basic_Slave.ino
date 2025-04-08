@@ -12,13 +12,13 @@ Slave (DOIT ESP32 - 2) MAC Address -> 08:A6:F7:B0:7C:91
 
 typedef struct SlaveRX
 {
-  float temp_buffer[BUFFER_SIZE];
-  float hum_buffer[BUFFER_SIZE];
-  float pressure_buffer[BUFFER_SIZE];
-  float blood_oxygen_buffer[BUFFER_SIZE];
-  float heart_rate_buffer[BUFFER_SIZE];
-  int16_t audio_buffer[BUFFER_SIZE];
-  uint8_t samples;
+    uint8_t samples;
+    float temp_buffer[BUFFER_SIZE];
+    float hum_buffer[BUFFER_SIZE];
+    float pressure_buffer[BUFFER_SIZE];
+    float blood_oxygen_buffer[BUFFER_SIZE];
+    float heart_rate_buffer[BUFFER_SIZE];
+    int16_t audio_buffer[BUFFER_SIZE];
 };
 struct SlaveRX RXMsg;
 
