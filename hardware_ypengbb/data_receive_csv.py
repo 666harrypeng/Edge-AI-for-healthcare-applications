@@ -2,11 +2,8 @@ import serial
 import csv
 import time
 import re
-
-# Configuration
-SERIAL_PORT = '/dev/cu.usbserial-0001'  # Yiyan Macbook's second port # Replace with actual serial port
-BAUD_RATE = 115200
-OUTPUT_FILE = './sensor_data.csv'
+import argparse
+import os
 
 def parse_data(line):
     """Parse a single line of sensor data"""
@@ -30,16 +27,26 @@ def parse_data(line):
         print(f"Line: {line}")
     return None
 
-def read_serial_data():
+def read_serial_data(serial_port, baud_rate, output_file):
     """
     Read data from the ESP32 and save it to a CSV file.
+    
+    Args:
+        serial_port: Serial port to connect to
+        baud_rate: Baud rate for serial communication
+        output_file: Path to save the collected data
     """
     try:
-        with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1) as ser:
-            print(f"Connected to {SERIAL_PORT} at {BAUD_RATE} baud")
+        with serial.Serial(serial_port, baud_rate, timeout=1) as ser:
+            print(f"Connected to {serial_port} at {baud_rate} baud")
+
+            # Create directory if it doesn't exist
+            output_dir = os.path.dirname(output_file)
+            if output_dir and not os.path.exists(output_dir):
+                os.makedirs(output_dir)
 
             # Open the output file for writing
-            with open(OUTPUT_FILE, mode='w', newline='') as file:
+            with open(output_file, mode='w', newline='') as file:
                 writer = csv.writer(file)
                 
                 # Write CSV header
@@ -52,6 +59,9 @@ def read_serial_data():
                     "Oxygen(%)",
                     "HeartRate(BPM)"
                 ])
+
+                print(f"Data collection started. Saving to {output_file}")
+                print("Press Ctrl+C to stop")
 
                 while True:
                     # Read a line from the serial port
@@ -79,5 +89,21 @@ def read_serial_data():
     finally:
         print("Program terminated.")
 
+def main():
+    """
+    Main function to parse command line arguments and start data collection
+    """
+    parser = argparse.ArgumentParser(description="Collect sensor data from ESP32")
+    parser.add_argument("--port", type=str, default="/dev/cu.usbserial-10",
+                        help="Serial port to connect to")
+    parser.add_argument("--baud", type=int, default=115200,
+                        help="Baud rate for serial communication")
+    parser.add_argument("--output", type=str, default="./sensor_data.csv",
+                        help="Path to save the collected data")
+    
+    args = parser.parse_args()
+    
+    read_serial_data(args.port, args.baud, args.output)
+
 if __name__ == "__main__":
-    read_serial_data()
+    main()

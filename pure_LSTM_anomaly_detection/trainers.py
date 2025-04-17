@@ -22,7 +22,6 @@ class LSTMTrainer:
         self.predicted_anomalies_window_idx = []
 
         self.epoch = 0
-        self.lstm_batch_size = config['lstm_batch_size']
         self.patience = config.get('patience', 20)
         self.best_val_loss = float('inf') 
         self.patience_counter = 0
@@ -73,10 +72,6 @@ class LSTMTrainer:
             self.optimizer.step()
             
             total_loss += loss.item()
-            
-        if self.epoch % self.config["visualization_interval"] == 0:
-            outputs, batch_y = outputs[0], batch_y[0]
-            self.visualize_pred(outputs, batch_y, mode='train')
         
         return total_loss / len(self.train_loader)
     
@@ -91,18 +86,25 @@ class LSTMTrainer:
                 val_outputs = self.model(batch_val_X, batch_val_y)
                 val_loss = self.criterion(val_outputs, batch_val_y)
                 val_total_loss += val_loss.item()
+            
+            if self.epoch % self.config["visualization_interval"] == 0:
+                self.visualize_pred(batch_val_y, val_outputs, mode='val')
                 
         return val_total_loss / len(self.val_loader)
     
                 
     def find_anomalies(self, data_loader):
         self.model.eval()
+
         prediction_errors = []
+        
         threshold_percentage = self.config['threshold_percent']
         
         with torch.no_grad():
             for batch_X, batch_y in data_loader:
                 batch_X, batch_y = batch_X.to(self.device), batch_y.to(self.device)
+                
+                # predict (infer from model)
                 pred_outputs = self.model.lstm_infer(batch_X)
                 
                 # de-normalize data values (broadcasting)
@@ -111,65 +113,113 @@ class LSTMTrainer:
                 
                 # calculate errors (scope unit: window by window, not single points comparison)
                 pred_error = np.mean((pred_outputs - targets) ** 2)
+                
                 prediction_errors.append(pred_error)
             
             self.prediction_errors = np.array(prediction_errors)
             anomaly_threshold = np.percentile(self.prediction_errors, threshold_percentage)
             print(f"finish computing threshold at {threshold_percentage}% anomaly rate: {anomaly_threshold:.5f}" )
             
+            # get global indices for predicted anomaly "window" in this current full dataset (should be edited for final applications with real datasets)
             self.predicted_anomalies_window_idx = np.array([i for i, prediction_err in enumerate(self.prediction_errors) if prediction_err >= anomaly_threshold])
             
         return self.prediction_errors, self.predicted_anomalies_window_idx
         
-    def visualize_anomalies(self, full_data_used, adj_true_anomaly_intervals, predicted_anomalies_window_idx, recall):
-        plt.figure(figsize=(18 ,8))
-        color_list = ['steelblue', 'seagreen', 'darkturquoise', 'mediumslateblue', 'cadetblue', 'teal', 'darkorange', 'purple', 'mediumorchid', 'mediumpurple']
+    def visualize_anomalies(self, full_data_used, adj_true_anomaly_intervals, predicted_anomalies_window_idx, recall, precision=None, f_beta=None):
+        plt.figure(figsize=(20, 8))
+        color_list = ['#4292c6','#084594', '#88419d', 'mediumpurple', '#F8AC8C', '#F6CAE5', '#96CCCB']
         for modal_idx in range(full_data_used.shape[1]):
-            plt.plot(full_data_used[:, modal_idx], label=f"Full_data_modal_{modal_idx+1}", color=color_list[modal_idx])
+            plt.plot(full_data_used[:, modal_idx], label=f"Full_data_modal_{modal_idx+1}", color=color_list[modal_idx % len(color_list)], alpha=0.8)
         
         # Highlight true anomalies
-        y_min, y_max = plt.ylim()
-        for adj_start, adj_end in adj_true_anomaly_intervals:
-            plt.vlines(x=adj_start, ymin=y_min, ymax=y_max, color='gray', linestyles='dashed', alpha=0.5)
-            plt.vlines(x=adj_end, ymin=y_min, ymax=y_max, color='gray', linestyles='dashed', alpha=0.5)
-            plt.axvspan(adj_start, adj_end, color='gray', alpha=0.2, label='True Anomaly Windows' if adj_start == adj_true_anomaly_intervals[0][0] else "")
+        for start, end in adj_true_anomaly_intervals:
+            plt.axvspan(start, end, color='red', alpha=0.2, label='True Anomaly Windows' if start == adj_true_anomaly_intervals[0][0] else "")
                         
         # Highlight predicted anomalies
-        predicted_anomalies_window_intervals = [(predicted_anomalies_window_idx[i] * self.config['l_win'], (predicted_anomalies_window_idx[i] + 1) * self.config['l_win']) for i in range(len(predicted_anomalies_window_idx))]
-        for adj_start, adj_end in predicted_anomalies_window_intervals:
-            plt.vlines(x=adj_start, ymin=y_min, ymax=y_max, color='green', linestyles=':', alpha=0.7)
-            plt.vlines(x=adj_end, ymin=y_min, ymax=y_max, color='green', linestyles=':', alpha=0.7)
-            plt.axvspan(adj_start, adj_end, color='green', alpha=0.2, label='Predicted Anomaly Windows' if adj_start == predicted_anomalies_window_intervals[0][0] else "")
+        for idx in predicted_anomalies_window_idx:
+            start = idx * self.config['l_win']
+            end = (idx + 1) * self.config['l_win']
+            plt.axvspan(start, end, color='green', alpha=0.2, label='Predicted Anomaly Windows' if start == predicted_anomalies_window_idx[0] else "")
             
-        
+        # Define the saved path
         exp_dataset = self.config['dataset']
-        plt.title(f"{exp_dataset} - LSTM - Anomaly Detection Visualization\nRecall:{recall:.4f}" )
+        saved_path = os.path.join(self.config['result_dir'], f"anomaly_detection_comparison_thre{self.config['threshold_percent']}.png")
+        
+        # Create title with metrics
+        title = f"{exp_dataset} - LSTM - Anomaly Detection Results\n(Recall: {recall:.4f}"
+        if precision is not None:
+            title += f", Precision: {precision:.4f}"
+        if f_beta is not None:
+            title += f", F-beta: {f_beta:.4f} (beta={self.config.get('f_beta', 2)})"
+        title += ")"
+        
+        plt.title(title)
         plt.xlabel("Timestamps")
         plt.ylabel("Normalized Readings")
         plt.legend()
         plt.tight_layout()
-        plt.savefig(os.path.join(self.config['result_dir'], "anomaly_detection_comparison.png"))
+        plt.savefig(saved_path)
         plt.close()    
         
         
         
-    def visualize_pred(self, outputs, batch_y, mode):
+    def visualize_pred(self, batch_y, outputs, mode):
         outputs = outputs.cpu().detach().numpy()   
-        batch_y = batch_y.cpu().detach().numpy()  
+        batch_y = batch_y.cpu().detach().numpy()
+        outputs = np.transpose(outputs, (0, 2, 1))
+        batch_y = np.transpose(batch_y, (0, 2, 1))
+
         
-        plt.figure(figsize=(12, 6))
-        color_list = ['blue', 'red', 'green', 'yellow', 'purple', 'orange', 'brown', 'pink', 'gray', 'cyan']
-        for modal_idx in range(outputs.shape[1]):
-            plt.plot(outputs[:, modal_idx], label=f"prediction_modal_{modal_idx+1}", linestyle="dashed", color=color_list[modal_idx])
-            plt.plot(batch_y[:, modal_idx], label=f"raw_data_modal_{modal_idx+1}", linestyle='solid', color=color_list[modal_idx])
-        plt.xlabel("time steps")
-        plt.ylabel("normalized data values")
-        plt.title(f"LSTM Prediction - {mode} Epoch {self.epoch}")
-        plt.legend()
+        # plot & comparison
+        plot_group_num = 3
+        plt.figure(figsize=(12, 10))
+        colors = ["dodgerblue", "darkorange", "limegreen", "mediumvioletred", "gold", "darkcyan", "crimson"]
+        handles, labels = [], []
+        
+        for i in range(min(plot_group_num, batch_y.shape[0])):
+            plt.subplot(plot_group_num, 1, i + 1)
+            for modal_idx in range(outputs.shape[1]):
+                if i == 0:
+                    gt_line, = plt.plot(batch_y[i, modal_idx], 
+                                        label=f"Ground Truth Modal {modal_idx+1}", 
+                                        linestyle='solid',
+                                        color=colors[modal_idx])
+                    pred_line, = plt.plot(outputs[i, modal_idx],
+                                        label=f"Predicted Modal {modal_idx+1}",
+                                        linestyle='dashed', 
+                                        color=colors[modal_idx])
+                    handles.extend([gt_line, pred_line])
+                    labels.extend([f"Ground Truth Modal {modal_idx+1}", f"Predicted Modal {modal_idx+1}"])
+                else:   # Other subplots: skip labels
+                    plt.plot(batch_y[i, modal_idx], 
+                        linestyle='solid', 
+                        color=colors[modal_idx])
+                    plt.plot(outputs[i, modal_idx],
+                        linestyle='dashed', 
+                        color=colors[modal_idx])
+                    
+            plt.title(f"Sample {i+1}", 
+                        y=-0.25,    # put title under the subplot
+                        loc='center', 
+                        fontsize=10)
+        
+        # add a general title for the whole figure
+        plt.suptitle(f"LSTM Prediction Visualization ({mode.capitalize()}) - Epoch {self.epoch}", 
+                    y=0.95,
+                    fontweight='bold',
+                    fontsize=14)
+        
+        # Add a single legend below all subplots
+        plt.figlegend(handles, labels, 
+                    loc='lower center', 
+                    ncol=outputs.shape[1],  # Number of columns in legend
+                    bbox_to_anchor=(0.5, 0.02)  # Adjust vertical position
+        )
+
         plt.tight_layout()
-        plt.savefig(os.path.join(self.config['result_dir'], f"LSTM_prediction_{mode}_epoch_{self.epoch}.png"))
+        plt.subplots_adjust(top=0.9, bottom=0.15)  # Make space for the legend
+        plt.savefig(os.path.join(self.config['result_dir'], f"lstm_predictions_mode_{mode}_epoch_{self.epoch}.png"))
         plt.close()
-        
         
         
     def save_loss_curve(self, train_losses, val_losses, model_name):

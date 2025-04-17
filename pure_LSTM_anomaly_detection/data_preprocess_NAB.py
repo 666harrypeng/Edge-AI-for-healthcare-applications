@@ -58,6 +58,15 @@ def load_data(csv_folder_path, dataset):
     return t, readings, idx_anomaly
             
 def create_rolling_windows(data, window_size):
+    """
+    Generate rolling windows for the dataset.
+    :param data: Time-series data (numpy array).
+    :param window_size: Size of the rolling window.
+    :return: Rolling windows as a numpy array.
+    """
+    # ## Overlapped Windows
+    # return np.array([data[i:i + window_size] for i in range(len(data) - window_size + 1)])
+    
     ## Non-overlapped Windows
     window_num = len(data) // window_size
     return np.array([data[i * window_size : (i+1) * window_size] for i in range(window_num)])
@@ -154,6 +163,8 @@ def main():
                 'cpu_utilization', 
                 'ec2_request', 
                 'machine_temp', 
+                # 'rogue_agent_key_hold', 
+                # 'rogue_agent_key_updown', 
                 'nyc_taxi']
     
     for dataset in datasets:

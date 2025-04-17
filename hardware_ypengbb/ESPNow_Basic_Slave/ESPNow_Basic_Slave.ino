@@ -15,9 +15,9 @@ typedef struct SlaveRX
     uint8_t samples;
     float temp_buffer[BUFFER_SIZE];
     float hum_buffer[BUFFER_SIZE];
-    // float pressure_buffer[BUFFER_SIZE];
-    // float blood_oxygen_buffer[BUFFER_SIZE];
-    // float heart_rate_buffer[BUFFER_SIZE];
+    float pressure_buffer[BUFFER_SIZE];
+    float blood_oxygen_buffer[BUFFER_SIZE];
+    float heart_rate_buffer[BUFFER_SIZE];
     int16_t audio_buffer[BUFFER_SIZE];
 };
 struct SlaveRX RXMsg;

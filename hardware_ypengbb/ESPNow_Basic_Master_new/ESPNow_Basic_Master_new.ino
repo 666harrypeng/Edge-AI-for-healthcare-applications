@@ -28,9 +28,9 @@ typedef struct MasterTX
 	uint8_t samples; // Number of samples in each buffer
 	float temp_buffer[BUFFER_SIZE];
 	float hum_buffer[BUFFER_SIZE];
-	// float pressure_buffer[BUFFER_SIZE];
-	// float blood_oxygen_buffer[BUFFER_SIZE];
-	// float heart_rate_buffer[BUFFER_SIZE];
+	float pressure_buffer[BUFFER_SIZE];
+	float blood_oxygen_buffer[BUFFER_SIZE];
+	float heart_rate_buffer[BUFFER_SIZE];
 	int16_t audio_buffer[BUFFER_SIZE];
 
 	void initialize_tx_msg_data()
@@ -38,9 +38,9 @@ typedef struct MasterTX
 		samples = 0;
 		memset(temp_buffer, 0, sizeof(temp_buffer));
 		memset(hum_buffer, 0, sizeof(hum_buffer));
-		// memset(pressure_buffer, 0, sizeof(pressure_buffer));
-		// memset(blood_oxygen_buffer, 0, sizeof(blood_oxygen_buffer));
-		// memset(heart_rate_buffer, 0, sizeof(heart_rate_buffer));
+		memset(pressure_buffer, 0, sizeof(pressure_buffer));
+		memset(blood_oxygen_buffer, 0, sizeof(blood_oxygen_buffer));
+		memset(heart_rate_buffer, 0, sizeof(heart_rate_buffer));
 		memset(audio_buffer, 0, sizeof(audio_buffer));
 	}
 };
@@ -388,63 +388,63 @@ void setup()
 	}
 
 	/////////////////////////////////////// Check Pressure Sensor (BMP180) ///////////////////////////////////////////////////////
-	// if (!pressure_bmp.begin())
-	// {
-	// 	Serial.println(F("Pressure Sensor (BMP180) could NOT find. Check wiring ------ "));
-	// 	while (1)
-	// 		delay(10);
-	// }
-	// else
-	// {
-	// 	Serial.println(F("Pressure Sensor (BMP180) found"));
-	// }
+	if (!pressure_bmp.begin())
+	{
+		Serial.println(F("Pressure Sensor (BMP180) could NOT find. Check wiring ------ "));
+		while (1)
+			delay(10);
+	}
+	else
+	{
+		Serial.println(F("Pressure Sensor (BMP180) found"));
+	}
 
 	/////////////////////////////////////// Check Blood Oxygen Sensor (MAX30102) ///////////////////////////////////////////////////////
-	// if (!particleSensor.begin(Wire, I2C_SPEED_FAST))
-	// {
-	// 	Serial.println("Blood Oxygen Sensor (MAX30102) could NOT find. Check wiring ------ ");
-	// 	while (1)
-	// 		delay(10);
-	// }
-	// else
-	// {
-	// 	Serial.println("Blood Oxygen Sensor (MAX30102) found");
-    // 	particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange); //Configure sensor with these settings
-	// 	// particleSensor.enableDIETEMPRDY();
+	if (!particleSensor.begin(Wire, I2C_SPEED_FAST))
+	{
+		Serial.println("Blood Oxygen Sensor (MAX30102) could NOT find. Check wiring ------ ");
+		while (1)
+			delay(10);
+	}
+	else
+	{
+		Serial.println("Blood Oxygen Sensor (MAX30102) found");
+    	particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange); //Configure sensor with these settings
+		// particleSensor.enableDIETEMPRDY();
 
-	// 	// particleSensor.setPulseAmplitudeRed(0x0A); //Turn Red LED to low to indicate sensor is running
-	// 	// particleSensor.setPulseAmplitudeGreen(0); //Turn off Green LED
-	// 	// Configure particle sensor with pre-defined settings (global variables)
+		// particleSensor.setPulseAmplitudeRed(0x0A); //Turn Red LED to low to indicate sensor is running
+		// particleSensor.setPulseAmplitudeGreen(0); //Turn off Green LED
+		// Configure particle sensor with pre-defined settings (global variables)
 
-	// 	//read the first 100 samples, and determine the signal range
-	// 	for (byte i = 0 ; i < OXYGEN_CHUNK_SIZE ; i++)
-	// 	{
-	// 		while (particleSensor.available() == false) //do we have new data?
-	// 			particleSensor.check(); //Check the sensor for new data
+		//read the first 100 samples, and determine the signal range
+		for (byte i = 0 ; i < OXYGEN_CHUNK_SIZE ; i++)
+		{
+			while (particleSensor.available() == false) //do we have new data?
+				particleSensor.check(); //Check the sensor for new data
 
-	// 		redBuffer[i] = particleSensor.getRed();
-	// 		irBuffer[i] = particleSensor.getIR();
-	// 		particleSensor.nextSample(); //We're finished with this sample so move to next sample
+			redBuffer[i] = particleSensor.getRed();
+			irBuffer[i] = particleSensor.getIR();
+			particleSensor.nextSample(); //We're finished with this sample so move to next sample
 
-	// 		Serial.print(F("red="));
-	// 		Serial.print(redBuffer[i], DEC);
-	// 		Serial.print(F(", ir="));
-	// 		Serial.println(irBuffer[i], DEC);
-	// 	}
+			Serial.print(F("red="));
+			Serial.print(redBuffer[i], DEC);
+			Serial.print(F(", ir="));
+			Serial.println(irBuffer[i], DEC);
+		}
 
-	// 	//calculate heart rate and SpO2 after first 100 samples (first 4 seconds of samples)
-	// 	maxim_heart_rate_and_oxygen_saturation(irBuffer, OXYGEN_CHUNK_SIZE, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
+		//calculate heart rate and SpO2 after first 100 samples (first 4 seconds of samples)
+		maxim_heart_rate_and_oxygen_saturation(irBuffer, OXYGEN_CHUNK_SIZE, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
 
-    //     // If spo2 is out of range -> set to 99 -> for training stability
-    //     if (spo2 < 0 || validSPO2 != 1)
-    //     {
-    //         spo2 = 99;
-    //         last_spo2 = spo2;
-    //         Serial.println("[WARNING] spo2 is out of range -> set to 99");
-    //     }
+        // If spo2 is out of range -> set to 99 -> for training stability
+        if (spo2 < 0 || validSPO2 != 1)
+        {
+            spo2 = 99;
+            last_spo2 = spo2;
+            Serial.println("[WARNING] spo2 is out of range -> set to 99");
+        }
 
-	// 	Serial.println("Blood Oxygen Sensor (MAX30102) configured");
-	// }
+		Serial.println("Blood Oxygen Sensor (MAX30102) configured");
+	}
 
 	/////////////////////////////////////// Setup ADC for audio (KY-038) ///////////////////////////////////////////////////////
 	analogReadResolution(12);		// Sets the ADC resolution to 12 bits (0–4095).

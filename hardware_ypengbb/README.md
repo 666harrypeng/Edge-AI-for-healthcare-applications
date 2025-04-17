@@ -1,8 +1,6 @@
+# FYP Hardware
 
-# FYP Hardware (Data Collection & Visualization)
-
-- This is the hardware developed by `Yiyan PENG`, based on the raw code files from `Chris KUO`.
-- Last Update: 2025-March-16, 22:20
+This is the hardware developed by `Yiyan PENG`, based on the raw code files from `Chris KUO`.
 
 ## Hardware Overview
 

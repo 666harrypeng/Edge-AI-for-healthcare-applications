@@ -1,1 +1,2 @@
-*.pth
+# *.pth
+# grid_search_configs*/

@@ -1,7 +1,6 @@
 
 # Edge-AI-for-healthcare-applications (ZJ01b-24)
 
-* `Last Updated`: Mar 16, 2025 - 22:50
 * `Contributor`: Yiyan PENG (regulating branch ***model_design***)
 
 This branch stores all necessary files for the whole project based on contributions of Yiyan PENG.

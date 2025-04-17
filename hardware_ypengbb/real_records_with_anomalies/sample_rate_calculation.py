@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 
 # Read the CSV file
-df = pd.read_csv('sensor_data_nosein_noseout_9_with_anomalies.csv')
+df = pd.read_csv('sensor_data_nosein_noseout_10_with_anomalies.csv')
 
 # Convert Timestamp to datetime
 df['Timestamp'] = pd.to_datetime(df['Timestamp'])

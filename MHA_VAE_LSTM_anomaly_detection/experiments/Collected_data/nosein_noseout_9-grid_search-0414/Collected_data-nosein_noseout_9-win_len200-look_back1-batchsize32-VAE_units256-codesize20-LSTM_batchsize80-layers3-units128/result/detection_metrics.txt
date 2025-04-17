@@ -1,0 +1,8 @@
+threshold,90
+recall,0.8000
+precision,0.1633
+f_beta,0.2548
+true_positives,8
+false_positives,41
+false_negatives,19
+true_negatives,420

@@ -8,14 +8,15 @@ class LSTMModel(nn.Module):
         super(LSTMModel, self).__init__()
         self.l_win = config['l_win']
         self.num_hidden_units_lstm = config['num_hidden_units_lstm']
-        self.input_size = config['input_size'] # num of sensor types
-        self.future_window_num = config['l_seq']  # default 1 (num of future windows to predict)
+        self.input_size = config['input_size'] 
+        self.future_window_num = config['l_seq']  
         self.lstm_batch_size = config['lstm_batch_size']
         self.num_layers = config['num_layers']
         self.device = config['device']
         self.look_back_num = config['look_back_num']
+        self.lstm_dropout = config['lstm_dropout']
 
-        self.lstm = nn.LSTM(input_size=self.input_size, hidden_size=self.num_hidden_units_lstm, num_layers=self.num_layers, batch_first=True) 
+        self.lstm = nn.LSTM(input_size=self.input_size, hidden_size=self.num_hidden_units_lstm, num_layers=self.num_layers, batch_first=True, dropout=self.lstm_dropout) 
         self.fc = nn.Linear(self.num_hidden_units_lstm, self.input_size)
         
     def forward(self, x, targets):  # use Teacher forcing
@@ -41,7 +42,7 @@ class LSTMModel(nn.Module):
             
             # Teacher Forcing
             lstm_decoder_input = targets[:, t, :].unsqueeze(1)
-
+            
         # concat lstm decoder outputs
         lstm_decoder_outputs = torch.cat(lstm_decoder_outputs, dim=1)
         

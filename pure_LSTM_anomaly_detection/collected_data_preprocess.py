@@ -8,31 +8,18 @@ import matplotlib.pyplot as plt
 
 
 def load_collected_data(csv_folder_path, dataset, config):
-    anomaly_intervals = []
-    if dataset == 'nosein_mouthout_1':  
-        data_file = os.path.join(csv_folder_path, f'sensor_data_{dataset}.csv')
-        # pre-define anomaly intervals indices as for the raw csv file 
-        # (not yet adjusted by recording_start_line offset)
-        anomaly_intervals = [
-                            (5978, 6699),  # 1 anomaly interval
-                            (7580, 8046),  # 2 anomaly interval 
-                            (9204, 9674),  # 3 anomaly interval
-                            (11292, 11595) # 4 anomaly interval
-                            ]
-    elif dataset == 'nosein_noseout_1':
-        data_file = os.path.join(csv_folder_path, f'sensor_data_{dataset}.csv')
-        anomaly_intervals = [
-                            (772, 1260),  # 1 anomaly interval
-                            (1960, 2180),  # 2 anomaly interval 
-                            (2560, 2810),  # 3 anomaly interval
-                            (3670, 4090), # 4 anomaly interval
-                            (5112, 5230), # 5 anomaly interval
-                            (6090, 6310), # 6 anomaly interval
-                            (6792, 7039) # 7 anomaly interval
-                            ]
-    else:
-        raise ValueError(f"Dataset {dataset} not supported")
+    # Load dataset-specific configuration
+    with open('dataset_config.json', 'r') as f:
+        dataset_config = json.load(f)
     
+    if dataset not in dataset_config:
+        raise ValueError(f"Dataset {dataset} not found in dataset_config.json")
+    
+    dataset_specific_config = dataset_config[dataset]
+    anomaly_intervals = dataset_specific_config['anomaly_intervals']
+    recording_start_line = dataset_specific_config['recording_start_line']
+    
+    data_file = os.path.join(csv_folder_path, f'sensor_data_{dataset}_with_anomalies.csv')
     adj_anomaly_intervals = []
     anomalies = []
     
@@ -42,7 +29,6 @@ def load_collected_data(csv_folder_path, dataset, config):
         rows = list(readCSV)
         
         # Start from line recording_start_line where valid readings begin
-        recording_start_line = config.get('recording_start_line', 0)
         valid_rows = rows[recording_start_line:]
         
         # Extract timestamps for each anomaly interval
@@ -57,43 +43,25 @@ def load_collected_data(csv_folder_path, dataset, config):
                 if i < len(valid_rows):
                     anomalies.append(i)
 
-        if dataset == 'nosein_mouthout_1':
-            t = []
-            temp_readings = []
-            hum_readings = []
-            for i, row in enumerate(valid_rows):
-                t.append(i)
-                temp_readings.append(float(row[1]))
-                hum_readings.append(float(row[2]))
-            t = np.asarray(t)
-            temp_readings = np.asarray(temp_readings)
-            hum_readings = np.asarray(hum_readings)
-            
-            print(f">>> Original {dataset} csv file contains {t.shape} timestamps.")
-            print(f">>> Processed time series contain {temp_readings.shape} temperature readings and {hum_readings.shape} humidity readings.")
-            print(f">>> Include {len(anomalies)} anomalies")
+        t = []
+        temp_readings = []
+        hum_readings = []
+        audio_readings = []
+        for i, row in enumerate(valid_rows):
+            t.append(i)
+            audio_readings.append(float(row[1]))
+            temp_readings.append(float(row[2]))
+            hum_readings.append(float(row[3]))
+        t = np.asarray(t)
+        temp_readings = np.asarray(temp_readings)
+        hum_readings = np.asarray(hum_readings)
+        audio_readings = np.asarray(audio_readings)
+        
+        print(f">>> Original {dataset} csv file contains {t.shape} timestamps.")
+        print(f">>> Processed time series contain {temp_readings.shape} temperature readings, {hum_readings.shape} humidity readings, and {audio_readings.shape} audio readings.")
+        print(f">>> Include {len(anomalies)} anomalies")
 
-            return t, temp_readings, hum_readings, anomalies, adj_anomaly_intervals
-        elif dataset == 'nosein_noseout_1':
-            t = []
-            temp_readings = []
-            hum_readings = []
-            audio_readings = []
-            for i, row in enumerate(valid_rows):
-                t.append(i)
-                temp_readings.append(float(row[1]))
-                hum_readings.append(float(row[2]))
-                audio_readings.append(float(row[3]))
-            t = np.asarray(t)
-            temp_readings = np.asarray(temp_readings)
-            hum_readings = np.asarray(hum_readings)
-            audio_readings = np.asarray(audio_readings)
-            
-            print(f">>> Original {dataset} csv file contains {t.shape} timestamps.")
-            print(f">>> Processed time series contain {temp_readings.shape} temperature readings, {hum_readings.shape} humidity readings, and {audio_readings.shape} audio readings.")
-            print(f">>> Include {len(anomalies)} anomalies")
-
-            return t, temp_readings, hum_readings, audio_readings, anomalies, adj_anomaly_intervals
+        return t, temp_readings, hum_readings, audio_readings, anomalies, adj_anomaly_intervals
 
 def create_rolling_windows(data, window_size):
     ## non-overlapped windows
@@ -101,35 +69,21 @@ def create_rolling_windows(data, window_size):
     return np.array([data[i * window_size : (i+1) * window_size] for i in range(window_num)])
 
 def preprocess_and_save(csv_folder_path, dataset, data_dir, config):
-    if dataset == 'nosein_mouthout_1':
-        t, temp_readings, hum_readings, anomalies, adj_anomaly_intervals = load_collected_data(csv_folder_path, dataset, config)
-    elif dataset == 'nosein_noseout_1':
-        t, temp_readings, hum_readings, audio_readings, anomalies, adj_anomaly_intervals = load_collected_data(csv_folder_path, dataset, config)
+    t, temp_readings, hum_readings, audio_readings, anomalies, adj_anomaly_intervals = load_collected_data(csv_folder_path, dataset, config)
     print(">>> Successfully loaded data >>> Continue Data Preprocessing")
     
     # normalize by training mean and std
-    if dataset == 'nosein_mouthout_1':
-        temp_readings_mean, temp_readings_std = np.mean(temp_readings), np.std(temp_readings)
-        hum_readings_mean, hum_readings_std = np.mean(hum_readings), np.std(hum_readings)
-        temp_readings_normalized = (temp_readings - temp_readings_mean) / temp_readings_std
-        hum_readings_normalized = (hum_readings - hum_readings_mean) / hum_readings_std
-    elif dataset == 'nosein_noseout_1':
-        temp_readings_mean, temp_readings_std = np.mean(temp_readings), np.std(temp_readings)
-        hum_readings_mean, hum_readings_std = np.mean(hum_readings), np.std(hum_readings)
-        audio_readings_mean, audio_readings_std = np.mean(audio_readings), np.std(audio_readings)
-        temp_readings_normalized = (temp_readings - temp_readings_mean) / temp_readings_std
-        hum_readings_normalized = (hum_readings - hum_readings_mean) / hum_readings_std
-        audio_readings_normalized = (audio_readings - audio_readings_mean) / audio_readings_std
+    temp_readings_mean, temp_readings_std = np.mean(temp_readings), np.std(temp_readings)
+    hum_readings_mean, hum_readings_std = np.mean(hum_readings), np.std(hum_readings)
+    audio_readings_mean, audio_readings_std = np.mean(audio_readings), np.std(audio_readings)
+    temp_readings_normalized = (temp_readings - temp_readings_mean) / temp_readings_std
+    hum_readings_normalized = (hum_readings - hum_readings_mean) / hum_readings_std
+    audio_readings_normalized = (audio_readings - audio_readings_mean) / audio_readings_std
     
     # concatenate temperature and humidity readings into a single time series
-    if dataset == 'nosein_mouthout_1':
-        assert len(temp_readings) == len(hum_readings), "Temperature and humidity readings must have the same length"
-        raw_readings = np.column_stack((temp_readings, hum_readings))
-        readings_normalized = np.column_stack((temp_readings_normalized, hum_readings_normalized))
-    elif dataset == 'nosein_noseout_1':
-        assert len(temp_readings) == len(hum_readings) == len(audio_readings), "Temperature, humidity, and audio readings must have the same length"
-        raw_readings = np.column_stack((temp_readings, hum_readings, audio_readings))
-        readings_normalized = np.column_stack((temp_readings_normalized, hum_readings_normalized, audio_readings_normalized))
+    assert len(temp_readings) == len(hum_readings) == len(audio_readings), "Temperature, humidity, and audio readings must have the same length"
+    raw_readings = np.column_stack((temp_readings, hum_readings, audio_readings))
+    readings_normalized = np.column_stack((temp_readings_normalized, hum_readings_normalized, audio_readings_normalized))
 
     # split into training and test sets
     split_ratio = config.get('split_ratio', 0.9)
@@ -192,13 +146,19 @@ def preprocess_and_save(csv_folder_path, dataset, data_dir, config):
              train_m=(temp_readings_mean, hum_readings_mean, audio_readings_mean), 
              train_std=(temp_readings_std, hum_readings_std, audio_readings_std))
     
-    print(f"\nPreprocessed {dataset} dataset saved at {save_path}")
+    # Print anomaly statistics
+    print("\nAnomaly Statistics after processed:")
+    print(f"Number of anomaly points in training set: {len(train_idx_anomaly)}")
+    print(f"Number of anomaly points in validation set: 0 (only to validate prediction training, no anomalies in validation set)")  # Since we filtered anomalies from training+validation
+    print(f"Number of anomaly points in test set: {len(test_idx_anomaly)}")
+    print(f"Total number of anomaly points: {len(anomalies)}")
     
+    print(f"\n>>> Preprocessed {dataset} dataset saved at {save_path} <<<")
     
 ###### main function for data preprocessing ######
 def main():
     parser = argparse.ArgumentParser(description="Dataset Preprocessing and Save")
-    parser.add_argument('-c', '--config', default='./pure_lstm_config.json', help='Path to the configuration JSON file')
+    parser.add_argument('-c', '--config', default='./pure_LSTM_config.json', help='Path to the configuration JSON file')
     args = parser.parse_args()
     
     with open(args.config, 'r') as f:
@@ -206,13 +166,6 @@ def main():
         
     csv_folder_path = config['csv_folder_path']
     data_dir = config['data_dir']
-    
-    '''
-    datasets = [
-                'nosein_mouthout_1', 
-                'nosein_noseout_1'
-                ]
-    '''
     
     dataset = config['dataset']
     preprocess_and_save(csv_folder_path, dataset, data_dir, config)
