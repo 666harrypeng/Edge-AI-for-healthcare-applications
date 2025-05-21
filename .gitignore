@@ -1,0 +1,12 @@
+.DS_Store
+*/.DS_Store
+*/__pycache__
+__pycache__
+# *.npy
+# Informer2020/checkpoints/*.pth
+*.__pycache__
+Informer2020/results/*.npy
+# *.pth
+*/experiments/*
+*.npz
+*.txt

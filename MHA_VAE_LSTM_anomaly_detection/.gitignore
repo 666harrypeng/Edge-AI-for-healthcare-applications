@@ -1,0 +1,8 @@
+.DS_Store
+# *.pth
+__pycache__/
+# experiments/
+grid_search_configs*/
+*/datasets/
+*.npz
+*.txt
