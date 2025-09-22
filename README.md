@@ -8,9 +8,15 @@ This repo is for ***2024-2025 HKUST ECE Final Year Project***
 * `Project ID`      ZJ01b-24
 * `Main Update Time` 2025-05-21
 
+> [!IMPORTANT]
+> **Healthcare Research Disclaimer**: This project was developed for academic research purposes and has only been tested in controlled academic environments. The respiratory anomaly detection models and systems presented here have **NOT been validated for clinical use**. Any healthcare applications require proper clinical validation, regulatory approval, and medical supervision.
+
 > [!NOTE]
-> This repo is now is well-organized. FYP has been finished. All the models (pure-LSTM, VAE-LSTM, MHA-VAE-LSTM) & GUI have been implemented
+> This repo is now is well-organized, with FYP finished. All the models (pure-LSTM, VAE-LSTM, MHA-VAE-LSTM) & GUI have been implemented.
+> 
 > For the details of each model, please refer to the `README.md` in each model folder.
+>
+> This repo is now open-source under the MIT License.
 
 ## Repo Overview
 
@@ -105,10 +111,4 @@ This repository contains the implementation of various deep learning models for 
 
 ## License
 
-This project is licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International License. You may view the full license text [here](https://github.com/666harrypeng/Edge-AI-for-healthcare-applications/blob/main/LICENSE).
-
-### License Summary
-
-* **Attribution**: You must give appropriate credit, provide a link to the license, and indicate if changes were made.
-* **NonCommercial**: You may not use the material for commercial purposes.
-* **NoDerivatives**: If you remix, transform, or build upon the material, you may not distribute the modified material.
+This project is licensed under the MIT License. You may view the full license text [here](https://github.com/666harrypeng/Edge-AI-for-healthcare-applications/blob/main/LICENSE).
